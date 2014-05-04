@@ -117,11 +117,20 @@ read /etc/hosts manually:
 # include <windows.h>
 #endif
 
+#ifdef JDNS_OS_ANDROID
+# include <netinet/in.h>
+# include <dlfcn.h>
+# include "arpa_nameser.h"
+# include "resolv_private.h"
+# include "res_private.h"
+# include "resolv_static.h"
+#else
 #ifdef JDNS_OS_UNIX
 # include <netinet/in.h>
 # include <arpa/nameser.h>
 # include <resolv.h>
 # include <dlfcn.h>
+#endif
 #endif
 
 #define string_indexOf jdns_string_indexOf
@@ -736,10 +745,11 @@ static jdns_dnsparams_t *dnsparams_get_unixsys()
 	int n;
 	jdns_dnsparams_t *params;
 
+
 #ifdef JDNS_MODERN_RES_API
-	struct __res_state res;
-	memset(&res, 0, sizeof(struct __res_state));
-	n = res_ninit(&res);
+    struct __res_state res;
+    memset(&res, 0, sizeof(struct __res_state));
+    n = res_ninit(&res);
 #define RESVAR res
 #else
 	n = my_res_init();
