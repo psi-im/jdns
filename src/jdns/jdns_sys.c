@@ -303,11 +303,7 @@ static jdns_string_t *file_nextline(FILE *f)
 static jdns_dnshostlist_t *read_hosts_file(const char *path)
 {
 	jdns_dnshostlist_t *out;
-	FILE *f;
-	jdns_string_t *line, *simp;
-	jdns_stringlist_t *parts;
-	jdns_address_t *addr;
-	int n;
+    FILE *f;
 
 	out = jdns_dnshostlist_new();
 
@@ -315,8 +311,13 @@ static jdns_dnshostlist_t *read_hosts_file(const char *path)
 	if(!f)
 		return out;
 	while(1)
-	{
-		line = file_nextline(f);
+    {
+        jdns_string_t *line, *simp;
+        jdns_stringlist_t *parts;
+        jdns_address_t *addr;
+        int n;
+
+        line = file_nextline(f);
 		if(!line)
 			break;
 
@@ -658,11 +659,8 @@ static jdns_dnsparams_t *dnsparams_get_win()
 
 static jdns_dnsparams_t *dnsparams_get_unixfiles()
 {
-	FILE *f;
-	int n;
-	jdns_dnsparams_t *params;
-	jdns_string_t *line, *simp;
-	jdns_stringlist_t *parts;
+    FILE *f;
+    jdns_dnsparams_t *params;
 
 	params = jdns_dnsparams_new();
 
@@ -671,6 +669,10 @@ static jdns_dnsparams_t *dnsparams_get_unixfiles()
 		return params;
 	while(1)
 	{
+        int n;
+        jdns_string_t *line, *simp;
+        jdns_stringlist_t *parts;
+
 		line = file_nextline(f);
 		if(!line)
 			break;

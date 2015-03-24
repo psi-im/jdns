@@ -242,7 +242,7 @@ public:
 	/**
 	   \brief Perform a query operation
 	*/
-	void query(const QByteArray &name, int type);
+    void query(const QByteArray &name, QJDns::Type type);
 
 	/**
 	   \brief Perform a publish operation

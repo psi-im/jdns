@@ -142,7 +142,9 @@ public:
 		QHostAddress addr;
 		int index;
 
-		Instance() : jdns(0)
+        Instance() :
+            jdns(0),
+            index(0)
 		{
 		}
 	};
@@ -178,7 +180,7 @@ public:
 	bool addInterface(const QHostAddress &addr);
 	void removeInterface(const QHostAddress &addr);
 
-	void queryStart(QJDnsSharedRequest *obj, const QByteArray &name, int qType);
+    void queryStart(QJDnsSharedRequest *obj, const QByteArray &name, QJDns::Type qType);
 	void queryCancel(QJDnsSharedRequest *obj);
 	void publishStart(QJDnsSharedRequest *obj, QJDns::PublishMode m, const QJDns::Record &record);
 	void publishUpdate(QJDnsSharedRequest *obj, const QJDns::Record &record);
@@ -205,7 +207,7 @@ public:
 	// current action
 	QJDnsSharedRequest::Type type;
 	QByteArray name;
-	int qType;
+    QJDns::Type qType;
 	QJDns::PublishMode pubmode;
 	QJDnsSharedPrivate::PreprocessMode ppmode;
 	QJDns::Record pubrecord;
