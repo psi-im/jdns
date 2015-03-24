@@ -385,15 +385,18 @@ int jdns_string_indexOf(const jdns_string_t *s, unsigned char c, int pos)
 
 jdns_stringlist_t *jdns_string_split(const jdns_string_t *s, unsigned char sep)
 {
-	int at, n, len;
-	jdns_string_t *str;
+    int at;
 	jdns_stringlist_t *out;
 
 	at = 0;
 	out = jdns_stringlist_new();
 	while(at < s->size)
 	{
-		n = jdns_string_indexOf(s, sep, at);
+        int len;
+        int n;
+        jdns_string_t *str;
+
+        n = jdns_string_indexOf(s, sep, at);
 		if(n == -1)
 			n = s->size;
 		len = n - at;
@@ -605,18 +608,19 @@ error:
 	}
 	else if(strchr(str, '.'))
 	{
-		unsigned char b[4];
-		int x;
+        unsigned char b[4];
 		unsigned long int ipv4;
-		int at;
-		char *part;
-		int len;
+        int at;
 		const char *p, *p2;
 
 		p = str;
 		at = 0;
 		while(1)
 		{
+            int x;
+            char *part;
+            int len;
+
 			p2 = strchr(p, '.');
 			if(!p2)
 				p2 = str + slen;
@@ -792,12 +796,12 @@ jdns_nameserverlist_t *jdns_nameserverlist_new()
 
 jdns_nameserverlist_t *jdns_nameserverlist_copy(const jdns_nameserverlist_t *a)
 {
-	int n;
 	jdns_nameserverlist_t *c = jdns_nameserverlist_new();
 	if(a->item)
 	{
+        int n;
 		c->item = (jdns_nameserver_t **)jdns_alloc(sizeof(jdns_nameserver_t *) * a->count);
-		c->count = a->count;
+        c->count = a->count;
 		for(n = 0; n < c->count; ++n)
 			c->item[n] = jdns_nameserver_copy(a->item[n]);
 	}
@@ -806,11 +810,11 @@ jdns_nameserverlist_t *jdns_nameserverlist_copy(const jdns_nameserverlist_t *a)
 
 void jdns_nameserverlist_delete(jdns_nameserverlist_t *a)
 {
-	int n;
 	if(!a)
 		return;
 	if(a->item)
 	{
+        int n;
 		for(n = 0; n < a->count; ++n)
 			jdns_nameserver_delete(a->item[n]);
 		jdns_free(a->item);
@@ -872,10 +876,10 @@ jdns_dnshostlist_t *jdns_dnshostlist_new()
 
 jdns_dnshostlist_t *jdns_dnshostlist_copy(const jdns_dnshostlist_t *a)
 {
-	int n;
 	jdns_dnshostlist_t *c = jdns_dnshostlist_new();
 	if(a->item)
 	{
+        int n;
 		c->item = (jdns_dnshost_t **)jdns_alloc(sizeof(jdns_dnshost_t *) * a->count);
 		c->count = a->count;
 		for(n = 0; n < c->count; ++n)
@@ -886,11 +890,11 @@ jdns_dnshostlist_t *jdns_dnshostlist_copy(const jdns_dnshostlist_t *a)
 
 void jdns_dnshostlist_delete(jdns_dnshostlist_t *a)
 {
-	int n;
 	if(!a)
 		return;
 	if(a->item)
 	{
+        int n;
 		for(n = 0; n < a->count; ++n)
 			jdns_dnshost_delete(a->item[n]);
 		jdns_free(a->item);
@@ -1359,14 +1363,14 @@ jdns_rr_t *jdns_rr_from_resource(const jdns_packet_resource_t *pr, const jdns_pa
 		}
 		case JDNS_RTYPE_TXT:
 		{
-			jdns_stringlist_t *texts;
-			jdns_string_t *str;
+            jdns_stringlist_t *texts;
 			int at, error;
 			texts = jdns_stringlist_new();
 			at = 0;
 			error = 0;
 			while(at < pr->rdlength)
 			{
+                jdns_string_t *str;
 				str = read_text_string(pr, &at);
 				if(!str)
 				{
