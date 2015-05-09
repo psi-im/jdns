@@ -80,6 +80,9 @@ set(BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE STRING "Directory where 
 set(LIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}" CACHE STRING "Directory where library will install")
 set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/include" CACHE PATH "The directory the headers are installed in")
 
+set(LIB_INSTALL_DIR_FULL "${LIB_INSTALL_DIR}")
+set(INCLUDE_INSTALL_DIR_FULL "${INCLUDE_INSTALL_DIR}")
+
 # Normalize paths for comparsion
 get_filename_component(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} ABSOLUTE)
 get_filename_component(BIN_INSTALL_DIR ${BIN_INSTALL_DIR} ABSOLUTE)
