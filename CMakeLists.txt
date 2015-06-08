@@ -13,6 +13,11 @@ elseif(APPLE)
  set(CMAKE_DEBUG_POSTFIX "_debug")
 endif(WIN32)
 
+# jdns can be used as bundled in this case need to explicity disable automoc
+# to avoid duplicates of mocked files
+set(CMAKE_AUTOMOC OFF)
+
+
 # OPTION(OSX_FRAMEWORK "Build a Mac OS X Framework")
 # SET(FRAMEWORK_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/Library/Frameworks"
 #     CACHE PATH "Where to place jdns.framework if OSX_FRAMEWORK is selected")
