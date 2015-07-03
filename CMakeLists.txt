@@ -37,7 +37,7 @@ endif(NOT BUILD_SHARED_LIBS)
 
 if(BUILD_QJDNS)
   option(QT4_BUILD "Force building with Qt4 even if Qt5 is found")
-  option(MULTI_QT "Consider multiple Qt version on the sustem (add suffixes)" OFF)
+  option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" OFF)
   if(NOT QT4_BUILD)
     find_package(Qt5Core QUIET)
     find_package(Qt5Network QUIET)
