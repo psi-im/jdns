@@ -37,6 +37,7 @@ endif(NOT BUILD_SHARED_LIBS)
 
 if(BUILD_QJDNS)
   option(QT4_BUILD "Force building with Qt4 even if Qt5 is found")
+  option(MULTI_QT "Consider multiple Qt version on the sustem (add suffixes)" OFF)
   if(NOT QT4_BUILD)
     find_package(Qt5Core QUIET)
     find_package(Qt5Network QUIET)
@@ -71,6 +72,10 @@ if(BUILD_QJDNS)
   if(NOT WIN32)
     set(QT_DONT_USE_QTGUI TRUE)
   endif(NOT WIN32)
+
+  if (NOT MULTI_QT)
+    set(QT_MAJ "")
+  endif(NOT MULTI_QT)
 endif(BUILD_QJDNS)
 
 
