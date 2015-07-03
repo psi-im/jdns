@@ -7,5 +7,5 @@ Name: qjdns
 Description: Qt bindings for JDNS
 Version: @JDNS_LIB_MAJOR_VERSION@.@JDNS_LIB_MINOR_VERSION@.@JDNS_LIB_PATCH_VERSION@
 Requires: jdns @QJDns_QT_PC_VERSION@
-Libs: -L${libdir} -lqjdns
+Libs: -L${libdir} -lq@QT_MAJ@jdns
 Cflags: -I${includedir}
