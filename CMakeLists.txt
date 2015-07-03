@@ -149,9 +149,11 @@ if(NOT WIN32)
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/jdns.pc
           DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
 
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/qjdns.pc.in
-	  ${CMAKE_CURRENT_BINARY_DIR}/q${QT_MAJ}jdns.pc
-                 @ONLY)
+  if(BUILD_QJDNS)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/qjdns.pc.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/q${QT_MAJ}jdns.pc
+                   @ONLY)
+  endif(BUILD_QJDNS)
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/q${QT_MAJ}jdns.pc
           DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
 endif(NOT WIN32)
