@@ -37,7 +37,14 @@ endif(NOT BUILD_SHARED_LIBS)
 
 if(BUILD_QJDNS)
   option(QT4_BUILD "Force building with Qt4 even if Qt5 is found")
-  option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" OFF)
+  # On Linux in most cases (or always) can be cointstalled both Qt4 and Qt5.
+  # Need to provide two versions of qjdns are Qt4 and Qt5-based.
+  if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" ON)
+  else()
+    option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" OFF)
+  endif()
+
   if(NOT QT4_BUILD)
     find_package(Qt5Core QUIET)
     find_package(Qt5Network QUIET)
@@ -57,7 +64,7 @@ if(BUILD_QJDNS)
     # to always look for includes there:
     set(CMAKE_INCLUDE_CURRENT_DIR ON)
     set(QJDns_QT_PC_VERSION "Qt5Core Qt5Network")
-    set(QT_MAJ "5")
+    set(QT_MAJ "-qt5")
   else(Qt5Core_FOUND)
     message("Qt5 not found, searching for Qt4")
     # Find Qt4
@@ -66,14 +73,14 @@ if(BUILD_QJDNS)
     # Include the cmake file needed to use qt4
     include(${QT_USE_FILE})
     set(QJDns_QT_PC_VERSION "QtCore QtNetwork")
-    set(QT_MAJ "4")
+    set(QT_MAJ "-qt4")
   endif(Qt5Core_FOUND)
 
   if(NOT WIN32)
     set(QT_DONT_USE_QTGUI TRUE)
   endif(NOT WIN32)
 
-  if (NOT MULTI_QT)
+  if(NOT MULTI_QT)
     set(QT_MAJ "")
   endif(NOT MULTI_QT)
 endif(BUILD_QJDNS)
@@ -119,7 +126,7 @@ endif()
 
 if(NOT MSVC)
   set(JDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/jdns")
-  set(QJDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns")
+  set(QJDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns${QT_MAJ}")
 else(NOT MSVC)
   set(JDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
   set(QJDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
@@ -151,10 +158,10 @@ if(NOT WIN32)
 
   if(BUILD_QJDNS)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/qjdns.pc.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/q${QT_MAJ}jdns.pc
+                   ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
                    @ONLY)
   endif(BUILD_QJDNS)
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/q${QT_MAJ}jdns.pc
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
           DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
 endif(NOT WIN32)
 
@@ -190,18 +197,18 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake
 
 install(EXPORT jdns-export DESTINATION ${JDNS_CONFIG_INSTALL_DIR} FILE JDnsTargets.cmake)
 if(BUILD_QJDNS)
-  install(EXPORT qjdns-export DESTINATION ${QJDNS_CONFIG_INSTALL_DIR} FILE Q${QT_MAJ}JDnsTargets.cmake)
+  install(EXPORT qjdns-export DESTINATION ${QJDNS_CONFIG_INSTALL_DIR} FILE QJDns${QT_MAJ}Targets.cmake)
 
   # cmake-modules
   configure_package_config_file(
     QJDnsConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/Q${QT_MAJ}JDnsConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
     INSTALL_DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
 
-  write_basic_config_version_file(Q${QT_MAJ}JDnsConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
+  write_basic_config_version_file(QJDns${QT_MAJ}ConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
 
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/Q${QT_MAJ}JDnsConfig.cmake
-                ${CMAKE_CURRENT_BINARY_DIR}/Q${QT_MAJ}JDnsConfigVersion.cmake
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake
+                ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake
           DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
 endif(BUILD_QJDNS)
 
