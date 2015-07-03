@@ -28,7 +28,7 @@ add_library(q${QT_MAJ}jdns ${qjdns_SRCS} ${qjdns_MOC_SRCS} ${qjdns_MOC_HDRS} ${q
 if(Qt5Core_FOUND)
   target_link_libraries(q${QT_MAJ}jdns ${Qt5Core_LIBRARIES} ${Qt5Network_LIBRARIES})
 else(Qt5Core_FOUND)
-  target_link_libraries(${QT_MAJ}qjdns ${QT_LIBRARIES})
+  target_link_libraries(q${QT_MAJ}jdns ${QT_LIBRARIES})
 endif(Qt5Core_FOUND)
 target_link_libraries(q${QT_MAJ}jdns jdns)
 
