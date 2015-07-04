@@ -127,9 +127,11 @@ endif()
 if(NOT MSVC)
   set(JDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/jdns")
   set(QJDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns${QT_MAJ}")
+  set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns")
 else(NOT MSVC)
   set(JDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
   set(QJDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
+  set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
 endif(NOT MSVC)
 
 if(APPLE)
@@ -201,7 +203,7 @@ if(BUILD_QJDNS)
 
   # cmake-modules
   configure_package_config_file(
-    QJDnsConfig.cmake.in
+    QJDns-qtConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
     INSTALL_DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
 
@@ -210,6 +212,19 @@ if(BUILD_QJDNS)
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake
                 ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake
           DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
+
+  # Install QJDns config module which will automagically choose correct building of QJDns
+  if(MULTI_QT)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/QJDnsConfig.cmake.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake
+                   COPYONLY)
+
+    write_basic_config_version_file(QJDnsConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake
+                  ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake
+            DESTINATION ${QJDNS_COMMON_CONFIG_INSTALL_DIR})
+  endif()
+
 endif(BUILD_QJDNS)
 
 add_custom_target(uninstall

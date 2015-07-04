@@ -1,11 +1,33 @@
-@PACKAGE_INIT@
-
-if(NOT JDns_FOUND)
-  find_package(JDns "@JDNS_LIB_VERSION_STRING@" REQUIRED)
-endif(NOT JDns_FOUND)
-
-if(NOT TARGET qjdns)
-	include(${CMAKE_CURRENT_LIST_DIR}/QJDns@QT_MAJ@Targets.cmake)
+if(QJDns_FIND_REQUIRED)
+  list(APPEND ARGS REQUIRED)
 endif()
 
-set(QJDns_LIBRARY qjdns)
+if(QJDns_FIND_QUIETLY)
+  list(APPEND ARGS QUIET)
+endif()
+
+list(APPEND ARGS CONFIG)
+
+get_filename_component(PACKAGE_PREFIX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../" ABSOLUTE)
+
+list(APPEND ARGS HINTS ${PACKAGE_PREFIX_DIR})
+
+list(APPEND ARGS
+  NO_DEFAULT_PATH
+  NO_CMAKE_ENVIRONMENT_PATH
+  NO_CMAKE_PATH
+  NO_SYSTEM_ENVIRONMENT_PATH
+  NO_CMAKE_PACKAGE_REGISTRY
+  NO_CMAKE_BUILDS_PATH
+  NO_CMAKE_SYSTEM_PATH
+  NO_CMAKE_SYSTEM_PACKAGE_REGISTRY
+  NO_CMAKE_FIND_ROOT_PATH
+)
+
+if(Qt5Core_FOUND)
+  find_package(QJDns-qt5 ${ARGS})
+elseif(Qt4_FOUND)
+  find_package(QJDns-qt4 ${ARGS})
+else()
+  message(FATAL_ERROR "Qt4/5 is not found. Need to explicity set Qt first.")
+endif()
