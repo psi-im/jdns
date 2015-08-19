@@ -162,9 +162,9 @@ if(NOT WIN32)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/qjdns.pc.in
                    ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
                    @ONLY)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
+            DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
   endif(BUILD_QJDNS)
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
-          DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
 endif(NOT WIN32)
 
 include_directories("include/jdns/")
