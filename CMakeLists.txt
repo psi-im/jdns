@@ -109,14 +109,20 @@ get_filename_component(BIN_INSTALL_DIR ${BIN_INSTALL_DIR} ABSOLUTE)
 get_filename_component(LIB_INSTALL_DIR ${LIB_INSTALL_DIR} ABSOLUTE)
 get_filename_component(INCLUDE_INSTALL_DIR ${INCLUDE_INSTALL_DIR} ABSOLUTE)
 
-# if all paths are subdirs of CMAKE_INSTALL_PREFIX it is possible to use relative paths
-set(USE_RELATIVE_PATHS ON)
-foreach(PATH ${BIN_INSTALL_DIR} ${LIB_INSTALL_DIR} ${INCLUDE_INSTALL_DIR})
-  string(FIND "${PATH}/" "${CMAKE_INSTALL_PREFIX}/" POS)
-  if(NOT "${POS}" STREQUAL "0")
-    set(USE_RELATIVE_PATHS OFF)
-  endif()
-endforeach()
+if(WIN32)
+  # if all paths are subdirs of CMAKE_INSTALL_PREFIX it is possible to use relative paths
+  set(USE_RELATIVE_PATHS ON)
+  foreach(PATH ${BIN_INSTALL_DIR} ${LIB_INSTALL_DIR} ${INCLUDE_INSTALL_DIR})
+    string(FIND "${PATH}/" "${CMAKE_INSTALL_PREFIX}/" POS)
+    if(NOT "${POS}" STREQUAL "0")
+      set(USE_RELATIVE_PATHS OFF)
+    endif()
+  endforeach()
+else()
+  # On Mac OS X relative paths lead to relative library id.
+  # Relative id can't be used to start application linked against such library.
+  set(USE_RELATIVE_PATHS OFF)
+endif()
 
 if(USE_RELATIVE_PATHS)
   file(RELATIVE_PATH BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${BIN_INSTALL_DIR})
