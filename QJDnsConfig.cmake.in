@@ -1,3 +1,11 @@
+if(Qt5Core_FOUND)
+  set(SUFFIX qt5)
+elseif(Qt4_FOUND)
+  set(SUFFIX qt4)
+else()
+  message(FATAL_ERROR "Qt4/5 is not found. Need to explicity set Qt first.")
+endif()
+
 if(QJDns_FIND_REQUIRED)
   list(APPEND ARGS REQUIRED)
 endif()
@@ -8,8 +16,7 @@ endif()
 
 list(APPEND ARGS CONFIG)
 
-get_filename_component(PACKAGE_PREFIX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../" ABSOLUTE)
-
+get_filename_component(PACKAGE_PREFIX_DIR "${CMAKE_CURRENT_LIST_DIR}/../qjdns-${SUFFIX}" ABSOLUTE)
 list(APPEND ARGS HINTS ${PACKAGE_PREFIX_DIR})
 
 list(APPEND ARGS
@@ -24,10 +31,4 @@ list(APPEND ARGS
   NO_CMAKE_FIND_ROOT_PATH
 )
 
-if(Qt5Core_FOUND)
-  find_package(QJDns-qt5 ${ARGS})
-elseif(Qt4_FOUND)
-  find_package(QJDns-qt4 ${ARGS})
-else()
-  message(FATAL_ERROR "Qt4/5 is not found. Need to explicity set Qt first.")
-endif()
+find_package(QJDns-${SUFFIX} ${ARGS})
