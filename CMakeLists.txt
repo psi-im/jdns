@@ -1,6 +1,11 @@
 project(jdns)
 
-cmake_minimum_required(VERSION 2.8.11)
+if(NOT APPLE)
+  cmake_minimum_required(VERSION 2.8.11)
+else()
+  cmake_minimum_required(VERSION 3.0)
+endif()
+
 cmake_policy(SET CMP0003 NEW)
 
 # Do not link against qtmain on Windows
@@ -139,10 +144,6 @@ else(NOT MSVC)
   set(QJDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
   set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
 endif(NOT MSVC)
-
-if(APPLE)
-   set(CMAKE_INSTALL_NAME_DIR ${LIB_INSTALL_DIR})
-endif(APPLE)
 
 set(JDNS_LIB_MAJOR_VERSION "2")
 set(JDNS_LIB_MINOR_VERSION "0")
