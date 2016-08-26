@@ -27,7 +27,7 @@ set(qjdns_HEADERS
 add_library(qjdns ${qjdns_SRCS} ${qjdns_MOC_SRCS} ${qjdns_MOC_HDRS} ${qjdns_PUBLIC_HEADERS})
 
 if(QT_MAJ)
-  set_target_properties(qjdns PROPERTIES LIBRARY_OUTPUT_NAME "qjdns${QT_MAJ}")
+  set_target_properties(qjdns PROPERTIES OUTPUT_NAME "qjdns${QT_MAJ}")
 endif()
 
 if(Qt5Core_FOUND)
