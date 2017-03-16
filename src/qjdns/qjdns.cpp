@@ -270,10 +270,13 @@ QJDns::NameServer::NameServer()
 // QJDns::Record
 //----------------------------------------------------------------------------
 QJDns::Record::Record()
+    : ttl(0)
+    , type(-1)
+    , haveKnown(false)
+    , priority(0)
+    , weight(0)
+    , port(0)
 {
-	ttl = 0;
-	type = -1;
-	haveKnown = false;
 }
 
 bool QJDns::Record::verify() const
