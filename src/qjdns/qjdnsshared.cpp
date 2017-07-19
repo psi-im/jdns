@@ -160,6 +160,9 @@ static inline uint qHash(const Handle &key)
 //----------------------------------------------------------------------------
 // JDnsShutdown
 //----------------------------------------------------------------------------
+
+#define WAIT_TIMEOUT 5000 /* 5 sec. */
+
 void JDnsShutdownAgent::start()
 {
 	QMetaObject::invokeMethod(this, "started", Qt::QueuedConnection);
@@ -190,7 +193,7 @@ void JDnsShutdown::waitForShutdown(const QList<QJDnsShared*> &_list)
 
 	QMutexLocker locker(&m);
 	start();
-	w.wait(&m);
+	w.wait(&m, WAIT_TIMEOUT);
 
 	foreach(QJDnsShared *i, list)
 	{
@@ -200,7 +203,7 @@ void JDnsShutdown::waitForShutdown(const QList<QJDnsShared*> &_list)
 
 	phase = 1;
 	agent->start();
-	wait();
+	wait(WAIT_TIMEOUT);
 }
 
 void JDnsShutdown::run()
