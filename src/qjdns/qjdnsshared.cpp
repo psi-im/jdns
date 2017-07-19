@@ -613,6 +613,9 @@ QList<QByteArray> QJDnsShared::domains()
 
 void QJDnsShared::waitForShutdown(const QList<QJDnsShared*> &instances)
 {
+	if (instances.isEmpty())
+		return;
+
 	JDnsShutdown s;
 	s.waitForShutdown(instances);
 }
