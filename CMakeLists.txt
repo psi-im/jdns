@@ -104,6 +104,7 @@ set(LIB_SUFFIX "" CACHE STRING "Define suffix of directory name (32/64)" )
 set(BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE STRING "Directory where binary will install")
 set(LIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}" CACHE STRING "Directory where library will install")
 set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/include" CACHE PATH "The directory the headers are installed in")
+set(DOC_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/jdns" CACHE PATH "Directory where jdns documentation will install")
 
 set(LIB_INSTALL_DIR_FULL "${LIB_INSTALL_DIR}")
 set(INCLUDE_INSTALL_DIR_FULL "${INCLUDE_INSTALL_DIR}")
@@ -113,6 +114,7 @@ get_filename_component(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} ABSOLUTE)
 get_filename_component(BIN_INSTALL_DIR ${BIN_INSTALL_DIR} ABSOLUTE)
 get_filename_component(LIB_INSTALL_DIR ${LIB_INSTALL_DIR} ABSOLUTE)
 get_filename_component(INCLUDE_INSTALL_DIR ${INCLUDE_INSTALL_DIR} ABSOLUTE)
+get_filename_component(DOC_INSTALL_DIR ${DOC_INSTALL_DIR} ABSOLUTE)
 
 if(WIN32)
   # if all paths are subdirs of CMAKE_INSTALL_PREFIX it is possible to use relative paths
@@ -133,6 +135,7 @@ if(USE_RELATIVE_PATHS)
   file(RELATIVE_PATH BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${BIN_INSTALL_DIR})
   file(RELATIVE_PATH LIB_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${LIB_INSTALL_DIR})
   file(RELATIVE_PATH INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${INCLUDE_INSTALL_DIR})
+  file(RELATIVE_PATH DOC_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${DOC_INSTALL_DIR})
 endif()
 
 if(NOT MSVC)
@@ -236,3 +239,14 @@ endif(BUILD_QJDNS)
 
 add_custom_target(uninstall
   "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
+
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+  configure_file(${CMAKE_SOURCE_DIR}/Doxyfile.in ${CMAKE_BINARY_DIR}/Doxyfile @ONLY)
+  add_custom_target(doc ALL
+    ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Generating API documentation with Doxygen" VERBATIM)
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/apidocs/html
+          DESTINATION ${DOC_INSTALL_DIR})
+endif()
