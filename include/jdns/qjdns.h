@@ -21,7 +21,11 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// this is the Qt wrapper to jdns.  it requires Qt 4.1+
+/**
+ * @file
+ *
+ * The Qt wrapper to jdns.
+ */
 
 #ifndef QJDNS_H
 #define QJDNS_H
@@ -63,9 +67,9 @@ public:
 	enum Error
 	{
 		ErrorGeneric,
-		ErrorNXDomain, // query only
-		ErrorTimeout,  // query only
-		ErrorConflict  // publish only
+		ErrorNXDomain, ///< query only
+		ErrorTimeout,  ///< query only
+		ErrorConflict  ///< publish only
 	};
 
 	class JDNS_EXPORT NameServer
@@ -102,14 +106,14 @@ public:
 		bool haveKnown;
 
 		// known
-		QHostAddress address;    // for A, Aaaa
-		QByteArray name;         // for Mx, Srv, Cname, Ptr, Ns
-		int priority;            // for Mx, Srv
-		int weight;              // for Srv
-		int port;                // for Srv
-		QList<QByteArray> texts; // for Txt
-		QByteArray cpu;          // for Hinfo
-		QByteArray os;           // for Hinfo
+		QHostAddress address;    ///< for A, Aaaa
+		QByteArray name;         ///< for Mx, Srv, Cname, Ptr, Ns
+		int priority;            ///< for Mx, Srv
+		int weight;              ///< for Srv
+		int port;                ///< for Srv
+		QList<QByteArray> texts; ///< for Txt
+		QByteArray cpu;          ///< for Hinfo
+		QByteArray os;           ///< for Hinfo
 
 		Record();
 		bool verify() const;

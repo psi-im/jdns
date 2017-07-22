@@ -22,16 +22,15 @@
  */
 
 /**
-   \file qjdns_export.h
-
-   Preprocessor magic to allow export of library symbols. 
-
-   This is strictly internal.
-
-   \note You should not include this header directly from an
-   application. You should just use <tt> \#include \<qjdns.h>
-   </tt> instead.
-*/
+ * @file
+ *
+ * Preprocessor magic to allow export of library symbols.
+ *
+ * This is strictly internal.
+ *
+ * @note You should not include this header directly from an application. You should just use
+ *       `#include <jdns.h>` instead.
+ */
 
 #ifndef JDNS_EXPORT_H
 #define JDNS_EXPORT_H

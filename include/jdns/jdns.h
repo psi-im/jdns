@@ -21,6 +21,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/**
+ * @file
+ */
+
 #ifndef JDNS_H
 #define JDNS_H
 
@@ -119,9 +123,15 @@ JDNS_EXPORT jdns_address_t *jdns_address_copy(const jdns_address_t *a);
 JDNS_EXPORT void jdns_address_delete(jdns_address_t *a);
 JDNS_EXPORT void jdns_address_set_ipv4(jdns_address_t *a, unsigned long int ipv4);
 JDNS_EXPORT void jdns_address_set_ipv6(jdns_address_t *a, const unsigned char *ipv6);
-// return 1 if string was ok, else 0.  Note: IPv4 addresses only!
+
+/**
+ * @return 1 if string was ok, else 0.  Note: IPv4 addresses only!
+ */
 JDNS_EXPORT int jdns_address_set_cstr(jdns_address_t *a, const char *str);
-// return 1 if the same, else 0
+
+/**
+ * @return 1 if the same, else 0
+ */
 JDNS_EXPORT int jdns_address_cmp(const jdns_address_t *a, const jdns_address_t *b);
 
 // convenient predefined addresses/ports
@@ -133,9 +143,16 @@ JDNS_EXPORT jdns_address_t *jdns_address_multicast6_new(); // FF02::FB
 typedef struct jdns_server
 {
 	unsigned char *name;
-	int port; // SRV only
+	/**
+	 *  SRV only
+	 */
+	int port;
 	int priority;
-	int weight; // SRV only
+
+	/**
+	 * SRV only
+	 */
+	int weight;
 } jdns_server_t;
 
 JDNS_EXPORT jdns_server_t *jdns_server_new();
@@ -219,10 +236,10 @@ typedef struct jdns_rr
 
 	union
 	{
-		jdns_address_t *address;  // for A, AAAA
-		jdns_server_t *server;    // for MX, SRV
-		unsigned char *name;      // for CNAME, PTR, NS
-		jdns_stringlist_t *texts; // for TXT
+		jdns_address_t *address;  /**< for A, AAAA        */
+		jdns_server_t *server;    /**< for MX, SRV        */
+		unsigned char *name;      /**< for CNAME, PTR, NS */
+		jdns_stringlist_t *texts; /**< for TXT            */
 		struct
 		{
 			jdns_string_t *cpu;
@@ -289,71 +306,80 @@ typedef struct jdns_session jdns_session_t;
 
 typedef struct jdns_callbacks
 {
-	void *app; // user-supplied context
+	/**
+	 * user-supplied context
+	 */
+	void *app;
 
-	// time_now:
-	//   s: session
-	//   app: user-supplied context
-	//   return: milliseconds since session started
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @return milliseconds since session started
+	 */
 	int (*time_now)(jdns_session_t *s, void *app);
 
-	// rand_int:
-	//   s: session
-	//   app: user-supplied context
-	//   return: random integer between 0-65535
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @return random integer between 0-65535
+	 */
 	int (*rand_int)(jdns_session_t *s, void *app);
 
-	// debug_line:
-	//   s: session
-	//   app: user-supplied context
-	//   str: a line of debug text
-	//   return: nothing
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @param str a line of debug text
+	 */
 	void (*debug_line)(jdns_session_t *s, void *app, const char *str);
 
-	// udp_bind:
-	//   s: session
-	//   app: user-supplied context
-	//   addr: ip address of interface to bind to.  0 for all
-	//   port: port of interface to bind to.  0 for any
-	//   maddr: multicast address.  0 if not using multicast
-	//   return: handle (>0) of bound socket, or 0 on error
-	// note: for multicast, the following must be done:
-	//   use SO_REUSEPORT to share with other mdns programs
-	//   use IP_ADD_MEMBERSHIP to associate addr and maddr
-	//   set IP_MULTICAST_TTL to 255
+	/**
+	 * @note For multicast, the following must be done:
+	 *       - use SO_REUSEPORT to share with other mdns programs
+	 *       - use IP_ADD_MEMBERSHIP to associate addr and maddr
+	 *       - set IP_MULTICAST_TTL to 255
+	 *
+	 * @param s session
+	 * @param app user-supplied context
+	 * @param addr ip address of interface to bind to.  0 for all
+	 * @param port port of interface to bind to.  0 for any
+	 * @param maddr multicast address.  0 if not using multicast
+	 * @return handle (>0) of bound socket, or 0 on error
+	 */
 	int (*udp_bind)(jdns_session_t *s, void *app,
 		const jdns_address_t *addr, int port,
 		const jdns_address_t *maddr);
 
-	// udp_unbind:
-	//   s: session
-	//   app: user-supplied context
-	//   handle: handle of socket obtained with udp_bind
-	//   return: nothing
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @param handle handle of socket obtained with udp_bind
+	 */
 	void (*udp_unbind)(jdns_session_t *s, void *app, int handle);
 
-	// udp_read:
-	//   s: session
-	//   app: user-supplied context
-	//   handle: handle of socket obtained with udp_bind
-	//   addr: store ip address of sender
-	//   port: store port of sender
-	//   buf: store packet content
-	//   bufsize: value contains max size, to be changed to real size
-	//   return: 1 if packet read, 0 if none available
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @param handle handle of socket obtained with udp_bind
+	 * @param addr store ip address of sender
+	 * @param port store port of sender
+	 * @param buf store packet content
+	 * @param bufsize value contains max size, to be changed to real size
+	 * @return 1 if packet read, 0 if none available
+	 */
 	int (*udp_read)(jdns_session_t *s, void *app, int handle,
 		jdns_address_t *addr, int *port, unsigned char *buf,
 		int *bufsize);
 
-	// udp_write:
-	//   s: session
-	//   app: user-supplied context
-	//   handle: handle of socket obtained with udp_bind
-	//   addr: ip address of recipient
-	//   port: port of recipient
-	//   buf: packet content
-	//   bufsize: size of packet
-	//   return: 1 if packet taken for writing, 0 if this is a bad time
+	/**
+	 * @param s session
+	 * @param app user-supplied context
+	 * @param handle handle of socket obtained with udp_bind
+	 * @param addr ip address of recipient
+	 * @param port port of recipient
+	 * @param buf packet content
+	 * @param bufsize size of packet
+	 * @return 1 if packet taken for writing, 0 if this is a bad time
+	 */
 	int (*udp_write)(jdns_session_t *s, void *app, int handle,
 		const jdns_address_t *addr, int port, unsigned char *buf,
 		int bufsize);
@@ -361,144 +387,166 @@ typedef struct jdns_callbacks
 
 typedef struct jdns_event
 {
-	int type;   // JDNS_EVENT
-	int id;     // query id or publish id
+	/**
+	 * JDNS_EVENT
+	 */
+	int type;
 
-	// for query, this can be SUCCESS, NXDOMAIN, ERROR, or TIMEOUT
-	// for publish, this can be SUCCESS, ERROR, or CONFLICT
+	/**
+	 * query id or publish id
+	 */
+	int id;
+
+	/**
+	 * for query, this can be SUCCESS, NXDOMAIN, ERROR, or TIMEOUT
+	 * for publish, this can be SUCCESS, ERROR, or CONFLICT
+	 */
 	int status;
 
-	// for query
+	/**
+	 * for query
+	 */
 	jdns_response_t *response;
 } jdns_event_t;
 
 JDNS_EXPORT void jdns_event_delete(jdns_event_t *e);
 
-// jdns_session_new:
-//   callbacks: the struct of callbacks
-//   return: newly allocated session
+/**
+ * @param callbacks the struct of callbacks
+ * @return newly allocated session
+ */
 JDNS_EXPORT jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks);
 
-// jdns_session_delete:
-//   s: session to free
-//   return: nothing
+/**
+ * @param session to free
+ */
 JDNS_EXPORT void jdns_session_delete(jdns_session_t *s);
 
-// jdns_init_unicast:
-//   s: session
-//   addr: ip address of interface to bind to.  NULL for all
-//   port: port of interface to bind to.  0 for any
-//   return: 1 on success, 0 on failure
-JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr,
-	int port);
+/**
+ * @param s session
+ * @param addr ip address of interface to bind to.  NULL for all
+ * @param port port of interface to bind to.  0 for any
+ * @return 1 on success, 0 on failure
+ */
+JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port);
 
-// jdns_init_multicast:
-//   s: session
-//   addr: ip address of interface to bind to.  NULL for all
-//   port: port of interface to bind to.  0 for any
-//   addr: multicast address to associate with.  cannot be NULL
-//   return: 1 on success, 0 on failure
-JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr,
-	int port, const jdns_address_t *maddr);
+/**
+ * @param s session
+ * @param addr ip address of interface to bind to. NULL for all
+ * @param port port of interface to bind to.  0 for any
+ * @param maddr multicast address to associate with. Can not be NULL
+ * @return 1 on success, 0 on failure
+ */
+JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
 
-// jdns_shutdown:
-//   s: session
-//   return: nothing
+/**
+ * @param s session
+ */
 JDNS_EXPORT void jdns_shutdown(jdns_session_t *s);
 
-// jdns_set_nameservers:
-//   s: session
-//   nslist: list of nameservers
-//   return nothing
-JDNS_EXPORT void jdns_set_nameservers(jdns_session_t *s,
-	const jdns_nameserverlist_t *nslist);
+/**
+ * @param s session
+ * @param nslist list of nameservers
+ */
+JDNS_EXPORT void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist);
 
-// jdns_probe:
-//   s: session
-//   return: nothing
+/**
+ * @param s session
+ */
 JDNS_EXPORT void jdns_probe(jdns_session_t *s);
 
-// jdns_query:
-//   s: session
-//   name: the name to look up
-//   rtype: the record type
-//   return: id of this operation
+/**
+ * @param s session
+ * @param name the name to look up
+ * @param rtype the record type
+ * @return id of this operation
+ */
 JDNS_EXPORT int jdns_query(jdns_session_t *s, const unsigned char *name, int rtype);
 
-// jdns_cancel_query:
-//   s: session
-//   id: the operation id to cancel
-//   return: nothing
+/**
+ * @param s session
+ * @param id the operation id to cancel
+ */
 JDNS_EXPORT void jdns_cancel_query(jdns_session_t *s, int id);
 
-// jdns_publish:
-//   s: session
-//   mode: JDNS_PUBLISH shared or unique
-//   rec: the record data
-//   return: id of this operation
-// note: supported record types: A, AAAA, SRV, CNAME, PTR, TXT, and HINFO.
-//   if the published type is not one of these, raw rdata must be set.
+/**
+ * @note Supported record types: A, AAAA, SRV, CNAME, PTR, TXT, and HINFO.
+ *       If the published type is not one of these, raw rdata must be set.
+ *
+ * @param s session
+ * @param mode JDNS_PUBLISH shared or unique
+ * @param rec the record data
+ * @return id of this operation
+ */
 JDNS_EXPORT int jdns_publish(jdns_session_t *s, int mode, const jdns_rr_t *rec);
 
-// jdns_update_publish:
-//   s: session
-//   id: the operation id to update
-//   rec: the record data
-//   return: nothing
-// note: update only works on successfully published records, and no event
-//   is generated for a successful update.
+/**
+ * @note update only works on successfully published records, and no event is generated for a
+ *       successful update.
+ *
+ * @param s session
+ * @param id the operation id to update
+ * @param rec the record data
+ */
 JDNS_EXPORT void jdns_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rec);
 
-// jdns_cancel_publish:
-//   s: session
-//   id: the operation id to cancel
-//   return: nothing
+/**
+ * @param s session
+ * @param id the operation id to cancel
+ */
 JDNS_EXPORT void jdns_cancel_publish(jdns_session_t *s, int id);
 
-// jdns_step:
-//   s: session
-//   return: JDNS_STEP flags OR'd together
+/**
+ * @param s session
+ * @return JDNS_STEP flags OR'd together
+ */
 JDNS_EXPORT int jdns_step(jdns_session_t *s);
 
-// jdns_next_timer:
-//   s: session
-//   return: milliseconds until timeout
+/**
+ * @param s session
+ * @return milliseconds until timeout
+ */
 JDNS_EXPORT int jdns_next_timer(jdns_session_t *s);
 
-// jdns_set_handle_readable:
-//   s: session
-//   handle: handle that is now readable
-//   return: nothing
+/**
+ * @param s session
+ * @param handle handle that is now readable
+ */
 JDNS_EXPORT void jdns_set_handle_readable(jdns_session_t *s, int handle);
 
-// jdns_set_handle_writable:
-//   s: session
-//   handle: handle that is now writable
-//   return: nothing
+/**
+ * @param s session
+ * @param handle handle that is now writable
+ */
 JDNS_EXPORT void jdns_set_handle_writable(jdns_session_t *s, int handle);
 
-// jdns_next_event:
-//   s: session
-//   return: newly allocated event, or zero if none are ready
+/**
+ * @param s session
+ * @return newly allocated event, or zero if none are ready
+ */
 JDNS_EXPORT jdns_event_t *jdns_next_event(jdns_session_t *s);
 
-// jdns_system_dnsparams:
-//   return: newly allocated dnsparams from the system
+/**
+ * @return newly allocated dnsparams from the system
+ */
 JDNS_EXPORT jdns_dnsparams_t *jdns_system_dnsparams();
 
-// jdns_set_hold_ids_enabled
-//   s: session
-//   enabled: whether to enable id holding.  default is 0 (disabled)
-//   return: nothing
-// normally, when a unicast query completes or any kind of query or publish
-//   operation results in an error, the operation is automatically "canceled".
-//   when id holding is enabled, the operation still stops internally, but the
-//   id value used by that operation is "held" until the application
-//   explicitly calls jdns_cancel_query() or jdns_cancel_publish() to release
-//   it.  this allows the application to ensure there is no ambiguity when
-//   determining which operation a particular event belongs to.  it is disabled
-//   be default so as to not introduce memory leaks in existing applications,
-//   however new applications really should use it.
+/**
+ * .
+ *
+ * Normally, when a unicast query completes or any kind of query or publish
+ * operation results in an error, the operation is automatically "canceled".
+ * When id holding is enabled, the operation still stops internally, but the
+ * id value used by that operation is "held" until the application
+ * explicitly calls jdns_cancel_query() or jdns_cancel_publish() to release
+ * it. This allows the application to ensure there is no ambiguity when
+ * determining which operation a particular event belongs to. It is disabled
+ * be default so as to not introduce memory leaks in existing applications,
+ * however new applications really should use it.
+ *
+ * @param s session
+ * @param enabled whether to enable id holding. Default is 0 (disabled)
+ */
 JDNS_EXPORT void jdns_set_hold_ids_enabled(jdns_session_t *s, int enabled);
 
 #ifdef __cplusplus

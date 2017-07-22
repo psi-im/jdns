@@ -21,6 +21,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/**
+ * @file
+ */
+
 #ifndef QJDNSSHARED_H
 #define QJDNSSHARED_H
 
