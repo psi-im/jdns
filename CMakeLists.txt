@@ -8,9 +8,6 @@ endif()
 
 cmake_policy(SET CMP0003 NEW)
 
-# Do not link against qtmain on Windows
-cmake_policy(SET CMP0020 OLD)
-
 # On Windows debug library should have 'd' postfix.
 if(WIN32)
   set(CMAKE_DEBUG_POSTFIX "d")
@@ -51,6 +48,8 @@ if(BUILD_QJDNS)
   endif()
 
   if(NOT QT4_BUILD)
+    # Do not link against qtmain on Windows
+    set(Qt5_NO_LINK_QTMAIN ON)
     find_package(Qt5Core QUIET)
     find_package(Qt5Network QUIET)
   endif(NOT QT4_BUILD)
@@ -72,6 +71,8 @@ if(BUILD_QJDNS)
     set(QT_MAJ "-qt5")
   else(Qt5Core_FOUND)
     message("Qt5 not found, searching for Qt4")
+    # Do not link against qtmain on Windows
+    set(QT4_NO_LINK_QTMAIN ON)
     # Find Qt4
     find_package(Qt4 REQUIRED QtCore QtNetwork)
 
