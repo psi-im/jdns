@@ -38,17 +38,17 @@ typedef void (*jdns_object_dtor_func)(void *);
 typedef void *(*jdns_object_cctor_func)(const void *);
 
 #define JDNS_OBJECT \
-	jdns_object_dtor_func dtor; \
-	jdns_object_cctor_func cctor;
+    jdns_object_dtor_func dtor; \
+    jdns_object_cctor_func cctor;
 
 #define JDNS_OBJECT_NEW(name) \
-	(name##_t *)jdns_object_new(sizeof(name##_t), \
-		(jdns_object_dtor_func)name##_delete, \
-		(jdns_object_cctor_func)name##_copy);
+    (name##_t *)jdns_object_new(sizeof(name##_t), \
+        (jdns_object_dtor_func)name##_delete, \
+        (jdns_object_cctor_func)name##_copy);
 
 typedef struct jdns_object
 {
-	JDNS_OBJECT
+    JDNS_OBJECT
 } jdns_object_t;
 
 JDNS_EXPORT void *jdns_object_new(int size, void (*dtor)(void *),
@@ -58,17 +58,17 @@ JDNS_EXPORT void jdns_object_delete(void *a);
 JDNS_EXPORT void jdns_object_free(void *a);
 
 #define JDNS_LIST_DECLARE(name) \
-	JDNS_OBJECT \
-	int count; \
-	name##_t **item;
+    JDNS_OBJECT \
+    int count; \
+    name##_t **item;
 
 typedef struct jdns_list
 {
-	JDNS_OBJECT
-	int count;
-	void **item;
-	int valueList;
-	int autoDelete;
+    JDNS_OBJECT
+    int count;
+    void **item;
+    int valueList;
+    int autoDelete;
 } jdns_list_t;
 
 JDNS_EXPORT jdns_list_t *jdns_list_new();
@@ -82,9 +82,9 @@ JDNS_EXPORT void jdns_list_remove_at(jdns_list_t *a, int pos);
 
 typedef struct jdns_string
 {
-	JDNS_OBJECT
-	unsigned char *data;
-	int size;
+    JDNS_OBJECT
+    unsigned char *data;
+    int size;
 } jdns_string_t;
 
 JDNS_EXPORT jdns_string_t *jdns_string_new();
@@ -97,9 +97,9 @@ JDNS_EXPORT void jdns_string_set_cstr(jdns_string_t *s, const char *str);
  // overlays jdns_list
 typedef struct jdns_stringlist
 {
-	JDNS_OBJECT
-	int count;
-	jdns_string_t **item;
+    JDNS_OBJECT
+    int count;
+    jdns_string_t **item;
 } jdns_stringlist_t;
 
 JDNS_EXPORT jdns_stringlist_t *jdns_stringlist_new();
@@ -109,13 +109,13 @@ JDNS_EXPORT void jdns_stringlist_append(jdns_stringlist_t *a, const jdns_string_
 
 typedef struct jdns_address
 {
-	int isIpv6;
-	union
-	{
-		unsigned long int v4;
-		unsigned char *v6; // 16 bytes
-	} addr;
-	char *c_str;
+    int isIpv6;
+    union
+    {
+        unsigned long int v4;
+        unsigned char *v6; // 16 bytes
+    } addr;
+    char *c_str;
 } jdns_address_t;
 
 JDNS_EXPORT jdns_address_t *jdns_address_new();
@@ -142,17 +142,17 @@ JDNS_EXPORT jdns_address_t *jdns_address_multicast6_new(); // FF02::FB
 
 typedef struct jdns_server
 {
-	unsigned char *name;
-	/**
-	 *  SRV only
-	 */
-	int port;
-	int priority;
+    unsigned char *name;
+    /**
+     *  SRV only
+     */
+    int port;
+    int priority;
 
-	/**
-	 * SRV only
-	 */
-	int weight;
+    /**
+     * SRV only
+     */
+    int weight;
 } jdns_server_t;
 
 JDNS_EXPORT jdns_server_t *jdns_server_new();
@@ -162,8 +162,8 @@ JDNS_EXPORT void jdns_server_set_name(jdns_server_t *s, const unsigned char *nam
 
 typedef struct jdns_nameserver
 {
-	jdns_address_t *address;
-	int port;
+    jdns_address_t *address;
+    int port;
 } jdns_nameserver_t;
 
 JDNS_EXPORT jdns_nameserver_t *jdns_nameserver_new();
@@ -174,8 +174,8 @@ JDNS_EXPORT void jdns_nameserver_set(jdns_nameserver_t *a, const jdns_address_t 
 
 typedef struct jdns_nameserverlist
 {
-	int count;
-	jdns_nameserver_t **item;
+    int count;
+    jdns_nameserver_t **item;
 } jdns_nameserverlist_t;
 
 JDNS_EXPORT jdns_nameserverlist_t *jdns_nameserverlist_new();
@@ -186,32 +186,32 @@ JDNS_EXPORT void jdns_nameserverlist_append(jdns_nameserverlist_t *a,
 
 typedef struct jdns_dnshost
 {
-	jdns_string_t *name;
-	jdns_address_t *address;
+    jdns_string_t *name;
+    jdns_address_t *address;
 } jdns_dnshost_t;
 
 typedef struct jdns_dnshostlist
 {
-	int count;
-	jdns_dnshost_t **item;
+    int count;
+    jdns_dnshost_t **item;
 } jdns_dnshostlist_t;
 
 typedef struct jdns_dnsparams
 {
-	jdns_nameserverlist_t *nameservers;
-	jdns_stringlist_t *domains;
-	jdns_dnshostlist_t *hosts;
+    jdns_nameserverlist_t *nameservers;
+    jdns_stringlist_t *domains;
+    jdns_dnshostlist_t *hosts;
 } jdns_dnsparams_t;
 
 JDNS_EXPORT jdns_dnsparams_t *jdns_dnsparams_new();
 JDNS_EXPORT jdns_dnsparams_t *jdns_dnsparams_copy(jdns_dnsparams_t *a);
 JDNS_EXPORT void jdns_dnsparams_delete(jdns_dnsparams_t *a);
 JDNS_EXPORT void jdns_dnsparams_append_nameserver(jdns_dnsparams_t *a,
-	const jdns_address_t *addr, int port);
+    const jdns_address_t *addr, int port);
 JDNS_EXPORT void jdns_dnsparams_append_domain(jdns_dnsparams_t *a,
-	const jdns_string_t *domain);
+    const jdns_string_t *domain);
 JDNS_EXPORT void jdns_dnsparams_append_host(jdns_dnsparams_t *a,
-	const jdns_string_t *name, const jdns_address_t *address);
+    const jdns_string_t *name, const jdns_address_t *address);
 
 #define JDNS_RTYPE_A         1
 #define JDNS_RTYPE_AAAA     28
@@ -226,26 +226,26 @@ JDNS_EXPORT void jdns_dnsparams_append_host(jdns_dnsparams_t *a,
 
 typedef struct jdns_rr
 {
-	unsigned char *owner;
-	int ttl;
-	int type;
-	int qclass;
-	int rdlength;
-	unsigned char *rdata;
-	int haveKnown;
+    unsigned char *owner;
+    int ttl;
+    int type;
+    int qclass;
+    int rdlength;
+    unsigned char *rdata;
+    int haveKnown;
 
-	union
-	{
-		jdns_address_t *address;  /**< for A, AAAA        */
-		jdns_server_t *server;    /**< for MX, SRV        */
-		unsigned char *name;      /**< for CNAME, PTR, NS */
-		jdns_stringlist_t *texts; /**< for TXT            */
-		struct
-		{
-			jdns_string_t *cpu;
-			jdns_string_t *os;
-		} hinfo; // for HINFO
-	} data;
+    union
+    {
+        jdns_address_t *address;  /**< for A, AAAA        */
+        jdns_server_t *server;    /**< for MX, SRV        */
+        unsigned char *name;      /**< for CNAME, PTR, NS */
+        jdns_stringlist_t *texts; /**< for TXT            */
+        struct
+        {
+            jdns_string_t *cpu;
+            jdns_string_t *os;
+        } hinfo; // for HINFO
+    } data;
 } jdns_rr_t;
 
 JDNS_EXPORT jdns_rr_t *jdns_rr_new();
@@ -253,29 +253,29 @@ JDNS_EXPORT jdns_rr_t *jdns_rr_copy(const jdns_rr_t *r);
 JDNS_EXPORT void jdns_rr_delete(jdns_rr_t *r);
 JDNS_EXPORT void jdns_rr_set_owner(jdns_rr_t *r, const unsigned char *name);
 JDNS_EXPORT void jdns_rr_set_record(jdns_rr_t *r, int type, const unsigned char *rdata,
-	int rdlength);
+    int rdlength);
 JDNS_EXPORT void jdns_rr_set_A(jdns_rr_t *r, const jdns_address_t *address);
 JDNS_EXPORT void jdns_rr_set_AAAA(jdns_rr_t *r, const jdns_address_t *address);
 JDNS_EXPORT void jdns_rr_set_MX(jdns_rr_t *r, const unsigned char *name, int priority);
 JDNS_EXPORT void jdns_rr_set_SRV(jdns_rr_t *r, const unsigned char *name, int port,
-	int priority, int weight);
+    int priority, int weight);
 JDNS_EXPORT void jdns_rr_set_CNAME(jdns_rr_t *r, const unsigned char *name);
 JDNS_EXPORT void jdns_rr_set_PTR(jdns_rr_t *r, const unsigned char *name);
 JDNS_EXPORT void jdns_rr_set_TXT(jdns_rr_t *r, const jdns_stringlist_t *texts);
 JDNS_EXPORT void jdns_rr_set_HINFO(jdns_rr_t *r, const jdns_string_t *cpu,
-	const jdns_string_t *os);
+    const jdns_string_t *os);
 JDNS_EXPORT void jdns_rr_set_NS(jdns_rr_t *r, const unsigned char *name);
 // note: only works on known types
 JDNS_EXPORT int jdns_rr_verify(const jdns_rr_t *r);
 
 typedef struct jdns_response
 {
-	int answerCount;
-	jdns_rr_t **answerRecords;
-	int authorityCount;
-	jdns_rr_t **authorityRecords;
-	int additionalCount;
-	jdns_rr_t **additionalRecords;
+    int answerCount;
+    jdns_rr_t **answerRecords;
+    int authorityCount;
+    jdns_rr_t **authorityRecords;
+    int additionalCount;
+    jdns_rr_t **additionalRecords;
 } jdns_response_t;
 
 JDNS_EXPORT jdns_response_t *jdns_response_new();
@@ -284,7 +284,7 @@ JDNS_EXPORT void jdns_response_delete(jdns_response_t *r);
 JDNS_EXPORT void jdns_response_append_answer(jdns_response_t *r, const jdns_rr_t *rr);
 JDNS_EXPORT void jdns_response_append_authority(jdns_response_t *r, const jdns_rr_t *rr);
 JDNS_EXPORT void jdns_response_append_additional(jdns_response_t *r,
-	const jdns_rr_t *rr);
+    const jdns_rr_t *rr);
 
 #define JDNS_PUBLISH_SHARED   0x0001
 #define JDNS_PUBLISH_UNIQUE   0x0002
@@ -306,107 +306,107 @@ typedef struct jdns_session jdns_session_t;
 
 typedef struct jdns_callbacks
 {
-	/**
-	 * user-supplied context
-	 */
-	void *app;
+    /**
+     * user-supplied context
+     */
+    void *app;
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @return milliseconds since session started
-	 */
-	int (*time_now)(jdns_session_t *s, void *app);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @return milliseconds since session started
+     */
+    int (*time_now)(jdns_session_t *s, void *app);
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @return random integer between 0-65535
-	 */
-	int (*rand_int)(jdns_session_t *s, void *app);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @return random integer between 0-65535
+     */
+    int (*rand_int)(jdns_session_t *s, void *app);
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @param str a line of debug text
-	 */
-	void (*debug_line)(jdns_session_t *s, void *app, const char *str);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @param str a line of debug text
+     */
+    void (*debug_line)(jdns_session_t *s, void *app, const char *str);
 
-	/**
-	 * @note For multicast, the following must be done:
-	 *       - use SO_REUSEPORT to share with other mdns programs
-	 *       - use IP_ADD_MEMBERSHIP to associate addr and maddr
-	 *       - set IP_MULTICAST_TTL to 255
-	 *
-	 * @param s session
-	 * @param app user-supplied context
-	 * @param addr ip address of interface to bind to.  0 for all
-	 * @param port port of interface to bind to.  0 for any
-	 * @param maddr multicast address.  0 if not using multicast
-	 * @return handle (>0) of bound socket, or 0 on error
-	 */
-	int (*udp_bind)(jdns_session_t *s, void *app,
-		const jdns_address_t *addr, int port,
-		const jdns_address_t *maddr);
+    /**
+     * @note For multicast, the following must be done:
+     *       - use SO_REUSEPORT to share with other mdns programs
+     *       - use IP_ADD_MEMBERSHIP to associate addr and maddr
+     *       - set IP_MULTICAST_TTL to 255
+     *
+     * @param s session
+     * @param app user-supplied context
+     * @param addr ip address of interface to bind to.  0 for all
+     * @param port port of interface to bind to.  0 for any
+     * @param maddr multicast address.  0 if not using multicast
+     * @return handle (>0) of bound socket, or 0 on error
+     */
+    int (*udp_bind)(jdns_session_t *s, void *app,
+        const jdns_address_t *addr, int port,
+        const jdns_address_t *maddr);
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @param handle handle of socket obtained with udp_bind
-	 */
-	void (*udp_unbind)(jdns_session_t *s, void *app, int handle);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @param handle handle of socket obtained with udp_bind
+     */
+    void (*udp_unbind)(jdns_session_t *s, void *app, int handle);
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @param handle handle of socket obtained with udp_bind
-	 * @param addr store ip address of sender
-	 * @param port store port of sender
-	 * @param buf store packet content
-	 * @param bufsize value contains max size, to be changed to real size
-	 * @return 1 if packet read, 0 if none available
-	 */
-	int (*udp_read)(jdns_session_t *s, void *app, int handle,
-		jdns_address_t *addr, int *port, unsigned char *buf,
-		int *bufsize);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @param handle handle of socket obtained with udp_bind
+     * @param addr store ip address of sender
+     * @param port store port of sender
+     * @param buf store packet content
+     * @param bufsize value contains max size, to be changed to real size
+     * @return 1 if packet read, 0 if none available
+     */
+    int (*udp_read)(jdns_session_t *s, void *app, int handle,
+        jdns_address_t *addr, int *port, unsigned char *buf,
+        int *bufsize);
 
-	/**
-	 * @param s session
-	 * @param app user-supplied context
-	 * @param handle handle of socket obtained with udp_bind
-	 * @param addr ip address of recipient
-	 * @param port port of recipient
-	 * @param buf packet content
-	 * @param bufsize size of packet
-	 * @return 1 if packet taken for writing, 0 if this is a bad time
-	 */
-	int (*udp_write)(jdns_session_t *s, void *app, int handle,
-		const jdns_address_t *addr, int port, unsigned char *buf,
-		int bufsize);
+    /**
+     * @param s session
+     * @param app user-supplied context
+     * @param handle handle of socket obtained with udp_bind
+     * @param addr ip address of recipient
+     * @param port port of recipient
+     * @param buf packet content
+     * @param bufsize size of packet
+     * @return 1 if packet taken for writing, 0 if this is a bad time
+     */
+    int (*udp_write)(jdns_session_t *s, void *app, int handle,
+        const jdns_address_t *addr, int port, unsigned char *buf,
+        int bufsize);
 } jdns_callbacks_t;
 
 typedef struct jdns_event
 {
-	/**
-	 * JDNS_EVENT
-	 */
-	int type;
+    /**
+     * JDNS_EVENT
+     */
+    int type;
 
-	/**
-	 * query id or publish id
-	 */
-	int id;
+    /**
+     * query id or publish id
+     */
+    int id;
 
-	/**
-	 * for query, this can be SUCCESS, NXDOMAIN, ERROR, or TIMEOUT
-	 * for publish, this can be SUCCESS, ERROR, or CONFLICT
-	 */
-	int status;
+    /**
+     * for query, this can be SUCCESS, NXDOMAIN, ERROR, or TIMEOUT
+     * for publish, this can be SUCCESS, ERROR, or CONFLICT
+     */
+    int status;
 
-	/**
-	 * for query
-	 */
-	jdns_response_t *response;
+    /**
+     * for query
+     */
+    jdns_response_t *response;
 } jdns_event_t;
 
 JDNS_EXPORT void jdns_event_delete(jdns_event_t *e);
