@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006  Justin Karneges
+ * Copyright (C) 2020  Ivan Romanov <drizt72@zoho.eu>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -796,6 +797,8 @@ jdns_packet_t *jdns_packet_new()
     a->opts.rd = 0;
     a->opts.ra = 0;
     a->opts.z = 0;
+    a->opts.ad = 0;
+    a->opts.cd = 0;
     a->opts.rcode = 0;
 
     a->questions = jdns_list_new();
@@ -826,6 +829,8 @@ jdns_packet_t *jdns_packet_copy(const jdns_packet_t *a)
     c->opts.rd = a->opts.rd;
     c->opts.ra = a->opts.ra;
     c->opts.z = a->opts.z;
+    c->opts.ad = a->opts.ad;
+    c->opts.cd = a->opts.cd;
     c->opts.rcode = a->opts.rcode;
 
     jdns_list_delete(c->questions);
@@ -889,7 +894,14 @@ int jdns_packet_import(jdns_packet_t **a, const unsigned char *data, int size)
         tmp->opts.rd = 1;
     if(buf[1] & 0x80)                        // ra is bit 7 (second byte)
         tmp->opts.ra = 1;
-    tmp->opts.z = (buf[1] & 0x70) >> 4;      // z is bits 6,5,4
+    if(buf[1] & 0x40)                        // z is bits 6 (second byte)
+        tmp->opts.z = 1;
+    // See RFC 4035 DNSSEC for AD and CD flags meaning.
+    // See RFC 6895 for AD and CD flags.
+    if(buf[1] & 0x20)                        // ad is bits 5 (second byte)
+        tmp->opts.ad = 1;
+    if(buf[1] & 0x10)                        // cd is bits 4 (second byte)
+        tmp->opts.cd = 1;
     tmp->opts.rcode = buf[1] & 0x0f;         // rcode is bits 3,2,1,0
     buf += 2;
 
@@ -965,8 +977,12 @@ int jdns_packet_export(jdns_packet_t *a, int maxsize)
         buf[0] |= 0x01;
     if(a->opts.ra)
         buf[1] |= 0x80;
-    c = (unsigned char)a->opts.z;
-    buf[1] |= c << 4;
+    if (a->opts.z)
+        buf[1] |= 0x40;
+    if (a->opts.ad)
+        buf[1] |= 0x20;
+    if (a->opts.cd)
+        buf[1] |= 0x10;
     c = (unsigned char)a->opts.rcode;
     buf[1] |= c;
     buf += 2;

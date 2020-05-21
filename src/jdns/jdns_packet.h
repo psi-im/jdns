@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006  Justin Karneges
+ * Copyright (C) 2020  Ivan Romanov <drizt72@zoho.eu>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -83,7 +84,7 @@ struct jdns_packet
     unsigned short int id;
     struct
     {
-        unsigned short qr, opcode, aa, tc, rd, ra, z, rcode;
+        unsigned short qr, opcode, aa, tc, rd, ra, z, ad, cd, rcode;
     } opts;
 
     // item counts as specified by the packet.  do not use these

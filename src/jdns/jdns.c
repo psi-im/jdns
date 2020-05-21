@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2005-2008  Justin Karneges
+ * Copyright (C) 2020  Ivan Romanov <drizt72@zoho.eu>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -350,9 +351,9 @@ static void _print_packet(jdns_session_t *s, const jdns_packet_t *packet)
 {
     _debug_line(s, "Packet:");
     _debug_line(s, "  id:   %d", packet->id);
-    _debug_line(s, "  opts: qr:%d, opcode:%d, aa:%d, tc:%d, rd:%d, ra:%d, z:%d, rcode:%d",
+    _debug_line(s, "  opts: qr:%d, opcode:%d, aa:%d, tc:%d, rd:%d, ra:%d, z:%d, ad:%d, cd:%d, rcode:%d",
         packet->opts.qr, packet->opts.opcode, packet->opts.aa, packet->opts.tc,
-        packet->opts.rd, packet->opts.ra, packet->opts.z, packet->opts.rcode);
+        packet->opts.rd, packet->opts.ra, packet->opts.z, packet->opts.ad, packet->opts.cd, packet->opts.rcode);
     _debug_line(s, "  qdcount=%d, ancount=%d, nscount=%d, arcount=%d",
         packet->qdcount, packet->ancount, packet->nscount, packet->arcount);
     if(packet->questions->count > 0)
