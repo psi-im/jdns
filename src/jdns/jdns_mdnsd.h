@@ -53,7 +53,7 @@ typedef struct mdnsda_struct
 // Global functions
 //
 // create a new mdns daemon for the given class of names (usually 1) and maximum frame size
-mdnsd mdnsd_new(int class, int frame, int port, int (*time_now)(mdnsd d, void *arg), int (*rand_int)(mdnsd d, void *arg), void *arg);
+mdnsd mdnsd_new(int qclass, int frame, int port, int (*time_now)(mdnsd d, void *arg), int (*rand_int)(mdnsd d, void *arg), void *arg);
 //
 // gracefully shutdown the daemon, use mdnsd_out() to get the last packets
 void mdnsd_shutdown(mdnsd d);

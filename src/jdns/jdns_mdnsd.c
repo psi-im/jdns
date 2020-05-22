@@ -640,7 +640,7 @@ int _r_out(mdnsd d, jdns_packet_t *m, mdnsdr *list)
 }
 
 
-mdnsd mdnsd_new(int class, int frame, int port, int (*time_now)(mdnsd d, void *arg), int (*rand_int)(mdnsd d, void *arg), void *arg)
+mdnsd mdnsd_new(int qclass, int frame, int port, int (*time_now)(mdnsd d, void *arg), int (*rand_int)(mdnsd d, void *arg), void *arg)
 {
     //int i;
     mdnsd d;
@@ -651,7 +651,7 @@ mdnsd mdnsd_new(int class, int frame, int port, int (*time_now)(mdnsd d, void *a
     d->cb_arg = arg;
     mygettimeofday(d, &d->now);
     d->expireall = d->now.tv_sec + GC;
-    d->class = class;
+    d->class = qclass;
     d->frame = frame;
     d->cache_count = 0;
     d->port = port;
