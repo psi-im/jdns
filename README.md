@@ -13,7 +13,7 @@ and is licensed under the MIT license.  Your application must supply
 functionality to JDNS, such as UDP sending/receiving, via callbacks.
 
 For Qt users there is a wrapper available called QJDns.  jdns.pri can
-be used to include everything into a qmake project.  jdns.pro will build
+be used to include everything into a qmake project. CMake-project will build
 the sample Qt-based commandline tool 'jdns'.
 
 #### Features:
