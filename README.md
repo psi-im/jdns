@@ -1,7 +1,7 @@
 ### JDNS
 
 Date: October 1st, 2005
-Author: Justin Karneges <justin@affinix.com>
+Author: Justin Karneges <justin@karneges.com>
 
 JDNS is a simple DNS implementation that can perform normal DNS queries
 of any record type (notably SRV), as well as Multicast DNS queries and
