@@ -15,7 +15,10 @@ elseif(APPLE)
     set(CMAKE_DEBUG_POSTFIX "_debug")
 endif()
 
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+# Static is the embedding-friendly default. Distribution packages that need
+# shared libraries opt in with -DBUILD_SHARED_LIBS=ON. Static PIC builds are
+# controlled independently by the standard CMAKE_POSITION_INDEPENDENT_CODE.
+option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
 
 if(ANDROID)
