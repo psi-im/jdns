@@ -15,10 +15,6 @@ elseif(APPLE)
     set(CMAKE_DEBUG_POSTFIX "_debug")
 endif()
 
-# jdns may be embedded as a subproject. Explicitly keep automoc disabled until
-# the Qt wrapper is requested so the C library itself never gains Qt tooling.
-set(CMAKE_AUTOMOC OFF)
-
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
 
@@ -57,9 +53,6 @@ if(BUILD_QJDNS)
     else()
         message(FATAL_ERROR "JDNS_QT_MAJOR_VERSION must be 5 or 6")
     endif()
-
-    set(CMAKE_AUTOMOC ON)
-    set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
     if(NOT MULTI_QT)
         set(QT_MAJ "")
