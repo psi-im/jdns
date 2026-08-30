@@ -13,9 +13,12 @@ add_executable(jdns-tool
     ${jdns_tool_MOC_HDRS}
 )
 
-target_link_libraries(jdns-tool PRIVATE QJDns::QJDns)
+set_target_properties(jdns-tool PROPERTIES
+    AUTOMOC ON
+    OUTPUT_NAME jdns
+)
 
-set_target_properties(jdns-tool PROPERTIES OUTPUT_NAME jdns)
+target_link_libraries(jdns-tool PRIVATE QJDns::QJDns)
 
 install(TARGETS jdns-tool
     RUNTIME DESTINATION "${BIN_INSTALL_DIR}"
