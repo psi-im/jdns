@@ -72,7 +72,8 @@ private:
     QElapsedTimer timer_;
     mutable bool paused_ = false;
     mutable qint64 pauseStartedReal_ = 0;
-    mutable qint64 pauseStartedVirtual_ = 0;
+    mutable qint64 lastSampleReal_ = 0;
+    mutable qint64 lastReturned_ = 0;
     mutable qint64 pausedTotal_ = 0;
 };
 
