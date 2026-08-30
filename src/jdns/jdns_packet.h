@@ -51,7 +51,7 @@ typedef struct jdns_packet_question
     unsigned short int qtype, qclass;
 } jdns_packet_question_t;
 
-jdns_packet_question_t *jdns_packet_question_new();
+jdns_packet_question_t *jdns_packet_question_new(void);
 jdns_packet_question_t *jdns_packet_question_copy(const jdns_packet_question_t *a);
 void jdns_packet_question_delete(jdns_packet_question_t *a);
 
@@ -71,7 +71,7 @@ typedef struct jdns_packet_resource
     jdns_list_t *writelog; // jdns_packet_write_t
 } jdns_packet_resource_t;
 
-jdns_packet_resource_t *jdns_packet_resource_new();
+jdns_packet_resource_t *jdns_packet_resource_new(void);
 jdns_packet_resource_t *jdns_packet_resource_copy(const jdns_packet_resource_t *a);
 void jdns_packet_resource_delete(jdns_packet_resource_t *a);
 void jdns_packet_resource_add_bytes(jdns_packet_resource_t *a, const unsigned char *data, int size);
@@ -108,7 +108,7 @@ struct jdns_packet
     unsigned char *raw_data;
 };
 
-jdns_packet_t *jdns_packet_new();
+jdns_packet_t *jdns_packet_new(void);
 jdns_packet_t *jdns_packet_copy(const jdns_packet_t *a);
 void jdns_packet_delete(jdns_packet_t *a);
 int jdns_packet_import(jdns_packet_t **a, const unsigned char *data, int size); // 0 on fail
