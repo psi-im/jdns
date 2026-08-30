@@ -25,9 +25,9 @@
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QJniObject>
-#include <QNativeInterface>
 #include <QQueue>
 #include <QSet>
 #include <QSocketNotifier>
