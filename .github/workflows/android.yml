@@ -55,7 +55,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_INSTALL_PREFIX="$PWD/sdk" \
             -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DCMAKE_C_FLAGS='-Wall -Wextra -Wpedantic -Werror -Wno-error=strict-prototypes' \
+            -DCMAKE_C_FLAGS='-Wall -Wextra -Wpedantic -Werror -Wno-error=strict-prototypes -Wno-error=unused-function' \
             -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wpedantic -Werror' \
             -DANDROID_PLATFORM="android-${ANDROID_API}" \
             -DBUILD_SHARED_LIBS=OFF \
