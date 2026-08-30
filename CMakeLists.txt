@@ -1,253 +1,228 @@
-project(jdns)
+cmake_minimum_required(VERSION 3.19)
 
-if(NOT APPLE)
-  cmake_minimum_required(VERSION 2.8.11)
-else()
-  cmake_minimum_required(VERSION 3.0)
+project(jdns
+    VERSION 2.0.6
+    LANGUAGES C CXX
+)
+
+include(GNUInstallDirs)
+
+# On Windows debug libraries use the conventional 'd' postfix. Keep the
+# historical macOS postfix for compatibility with existing consumers.
+if(WIN32)
+    set(CMAKE_DEBUG_POSTFIX "d")
+elseif(APPLE)
+    set(CMAKE_DEBUG_POSTFIX "_debug")
 endif()
 
-cmake_policy(SET CMP0003 NEW)
-
-# On Windows debug library should have 'd' postfix.
-if(WIN32)
-  set(CMAKE_DEBUG_POSTFIX "d")
-elseif(APPLE)
- set(CMAKE_DEBUG_POSTFIX "_debug")
-endif(WIN32)
-
-# jdns can be used as bundled in this case need to explicity disable automoc
-# to avoid duplicates of mocked files
+# jdns may be embedded as a subproject. Explicitly keep automoc disabled until
+# the Qt wrapper is requested so the C library itself never gains Qt tooling.
 set(CMAKE_AUTOMOC OFF)
 
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
 
-# OPTION(OSX_FRAMEWORK "Build a Mac OS X Framework")
-# SET(FRAMEWORK_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/Library/Frameworks"
-#     CACHE PATH "Where to place jdns.framework if OSX_FRAMEWORK is selected")
+if(ANDROID)
+    set(_jdns_build_tool_default OFF)
+else()
+    set(_jdns_build_tool_default ON)
+endif()
+option(BUILD_JDNS_TOOL "Build the jdns command-line tool" ${_jdns_build_tool_default})
+unset(_jdns_build_tool_default)
 
-option(BUILD_SHARED_LIBS "Build shared library" ON)
-option(BUILD_QJDNS "Buid JDNS Qt-wrapper" ON)
-option(BUILD_JDNS_TOOL "Build jdns test tool" ON)
-
-# jdns tool requires qjdns
 if(NOT BUILD_QJDNS)
-  set(BUILD_JDNS_TOOL OFF)
-endif(NOT BUILD_QJDNS)
-
-if(NOT BUILD_SHARED_LIBS)
-  add_definitions(-DJDNS_STATIC)
-endif(NOT BUILD_SHARED_LIBS)
+    set(BUILD_JDNS_TOOL OFF)
+endif()
 
 if(BUILD_QJDNS)
-  option(QT4_BUILD "Force building with Qt4 even if Qt5 is found")
-  # On Linux in most cases (or always) can be cointstalled both Qt4 and Qt5.
-  # Need to provide two versions of qjdns are Qt4 and Qt5-based.
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-    option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" ON)
-  else()
-    option(MULTI_QT "Consider multiple Qt version on the system (add suffixes)" OFF)
-  endif()
+    set(JDNS_QT_MAJOR_VERSION "6" CACHE STRING "Qt major version used by QJDns (5 or 6)")
+    set_property(CACHE JDNS_QT_MAJOR_VERSION PROPERTY STRINGS 5 6)
 
-  if(NOT QT4_BUILD)
-    # Do not link against qtmain on Windows
-    set(Qt5_NO_LINK_QTMAIN ON)
-    find_package(Qt5Core QUIET)
-    find_package(Qt5Network QUIET)
-  endif(NOT QT4_BUILD)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        option(MULTI_QT "Add the Qt major version suffix to QJDns artifacts" ON)
+    else()
+        option(MULTI_QT "Add the Qt major version suffix to QJDns artifacts" OFF)
+    endif()
 
-  if(Qt5Core_FOUND)
-    message("Qt5 found")
+    if(JDNS_QT_MAJOR_VERSION STREQUAL "6")
+        find_package(Qt6 REQUIRED COMPONENTS Core Network)
+        set(QJDNS_QT_TARGETS Qt6::Core Qt6::Network)
+        set(QJDns_QT_PC_VERSION "Qt6Core Qt6Network")
+        set(QT_MAJ "-qt6")
+    elseif(JDNS_QT_MAJOR_VERSION STREQUAL "5")
+        find_package(Qt5 REQUIRED COMPONENTS Core Network)
+        set(QJDNS_QT_TARGETS Qt5::Core Qt5::Network)
+        set(QJDns_QT_PC_VERSION "Qt5Core Qt5Network")
+        set(QT_MAJ "-qt5")
+    else()
+        message(FATAL_ERROR "JDNS_QT_MAJOR_VERSION must be 5 or 6")
+    endif()
 
-    include_directories(${Qt5Core_INCLUDE_DIRS})
-    include_directories(${Qt5Network_INCLUDE_DIRS})
-    add_definitions(${Qt5Core_DEFINITIONS})
-    add_definitions(${Qt5Network_DEFINITIONS})
-
-    # Tell CMake to run moc when necessary:
     set(CMAKE_AUTOMOC ON)
-    # As moc files are generated in the binary dir, tell CMake
-    # to always look for includes there:
     set(CMAKE_INCLUDE_CURRENT_DIR ON)
-    set(QJDns_QT_PC_VERSION "Qt5Core Qt5Network")
-    set(QT_MAJ "-qt5")
-  else(Qt5Core_FOUND)
-    message("Qt5 not found, searching for Qt4")
-    # Do not link against qtmain on Windows
-    set(QT4_NO_LINK_QTMAIN ON)
-    # Find Qt4
-    find_package(Qt4 REQUIRED QtCore QtNetwork)
 
-    # Include the cmake file needed to use qt4
-    include(${QT_USE_FILE})
-    set(QJDns_QT_PC_VERSION "QtCore QtNetwork")
-    set(QT_MAJ "-qt4")
-  endif(Qt5Core_FOUND)
+    if(NOT MULTI_QT)
+        set(QT_MAJ "")
+    endif()
+endif()
 
-  if(NOT WIN32)
-    set(QT_DONT_USE_QTGUI TRUE)
-  endif(NOT WIN32)
-
-  if(NOT MULTI_QT)
-    set(QT_MAJ "")
-  endif(NOT MULTI_QT)
-endif(BUILD_QJDNS)
-
-
-# put the include dirs which are in the source or build tree
-# before all other include dirs, so the headers in the sources
-# are prefered over the already installed ones
 set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
+set(JDNS_INCLUDEDIR "${CMAKE_CURRENT_SOURCE_DIR}/include/jdns")
 
-set(JDNS_INCLUDEDIR "${CMAKE_CURRENT_SOURCE_DIR}/include/jdns" )
-
-
-#add extra search paths for libraries and includes
-set(LIB_SUFFIX "" CACHE STRING "Define suffix of directory name (32/64)" )
-set(BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE STRING "Directory where binary will install")
-set(LIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}" CACHE STRING "Directory where library will install")
-set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/include" CACHE PATH "The directory the headers are installed in")
-set(DOC_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/jdns" CACHE PATH "Directory where jdns documentation will install")
+set(LIB_SUFFIX "" CACHE STRING "Suffix appended to the library directory name")
+set(BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}" CACHE PATH "Binary install directory")
+set(LIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}${LIB_SUFFIX}" CACHE PATH "Library install directory")
+set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}" CACHE PATH "Header install directory")
+set(DOC_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/doc/jdns" CACHE PATH "Documentation install directory")
 
 set(LIB_INSTALL_DIR_FULL "${LIB_INSTALL_DIR}")
 set(INCLUDE_INSTALL_DIR_FULL "${INCLUDE_INSTALL_DIR}")
 
-# Normalize paths for comparsion
-get_filename_component(CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} ABSOLUTE)
-get_filename_component(BIN_INSTALL_DIR ${BIN_INSTALL_DIR} ABSOLUTE)
-get_filename_component(LIB_INSTALL_DIR ${LIB_INSTALL_DIR} ABSOLUTE)
-get_filename_component(INCLUDE_INSTALL_DIR ${INCLUDE_INSTALL_DIR} ABSOLUTE)
-get_filename_component(DOC_INSTALL_DIR ${DOC_INSTALL_DIR} ABSOLUTE)
+# Normalize paths before deciding whether install locations can be represented
+# relative to CMAKE_INSTALL_PREFIX. This keeps Windows packages relocatable.
+get_filename_component(CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" ABSOLUTE)
+get_filename_component(BIN_INSTALL_DIR "${BIN_INSTALL_DIR}" ABSOLUTE)
+get_filename_component(LIB_INSTALL_DIR "${LIB_INSTALL_DIR}" ABSOLUTE)
+get_filename_component(INCLUDE_INSTALL_DIR "${INCLUDE_INSTALL_DIR}" ABSOLUTE)
+get_filename_component(DOC_INSTALL_DIR "${DOC_INSTALL_DIR}" ABSOLUTE)
 
 if(WIN32)
-  # if all paths are subdirs of CMAKE_INSTALL_PREFIX it is possible to use relative paths
-  set(USE_RELATIVE_PATHS ON)
-  foreach(PATH ${BIN_INSTALL_DIR} ${LIB_INSTALL_DIR} ${INCLUDE_INSTALL_DIR})
-    string(FIND "${PATH}/" "${CMAKE_INSTALL_PREFIX}/" POS)
-    if(NOT "${POS}" STREQUAL "0")
-      set(USE_RELATIVE_PATHS OFF)
-    endif()
-  endforeach()
+    set(USE_RELATIVE_PATHS ON)
+    foreach(_path IN ITEMS "${BIN_INSTALL_DIR}" "${LIB_INSTALL_DIR}" "${INCLUDE_INSTALL_DIR}")
+        string(FIND "${_path}/" "${CMAKE_INSTALL_PREFIX}/" _position)
+        if(NOT _position EQUAL 0)
+            set(USE_RELATIVE_PATHS OFF)
+        endif()
+    endforeach()
 else()
-  # On Mac OS X relative paths lead to relative library id.
-  # Relative id can't be used to start application linked against such library.
-  set(USE_RELATIVE_PATHS OFF)
+    # Relative install names are unsuitable for macOS shared libraries.
+    set(USE_RELATIVE_PATHS OFF)
 endif()
 
 if(USE_RELATIVE_PATHS)
-  file(RELATIVE_PATH BIN_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${BIN_INSTALL_DIR})
-  file(RELATIVE_PATH LIB_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${LIB_INSTALL_DIR})
-  file(RELATIVE_PATH INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${INCLUDE_INSTALL_DIR})
-  file(RELATIVE_PATH DOC_INSTALL_DIR ${CMAKE_INSTALL_PREFIX} ${DOC_INSTALL_DIR})
+    file(RELATIVE_PATH BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}" "${BIN_INSTALL_DIR}")
+    file(RELATIVE_PATH LIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}" "${LIB_INSTALL_DIR}")
+    file(RELATIVE_PATH INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}" "${INCLUDE_INSTALL_DIR}")
+    file(RELATIVE_PATH DOC_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}" "${DOC_INSTALL_DIR}")
 endif()
 
 if(NOT MSVC)
-  set(JDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/jdns")
-  set(QJDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns${QT_MAJ}")
-  set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns")
-else(NOT MSVC)
-  set(JDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
-  set(QJDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
-  set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake/")
-endif(NOT MSVC)
+    set(JDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/jdns")
+    set(QJDNS_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns${QT_MAJ}")
+    set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${LIB_INSTALL_DIR}/cmake/qjdns")
+else()
+    set(JDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake")
+    set(QJDNS_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake")
+    set(QJDNS_COMMON_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/cmake")
+endif()
 
-set(JDNS_LIB_MAJOR_VERSION "2")
-set(JDNS_LIB_MINOR_VERSION "0")
-set(JDNS_LIB_PATCH_VERSION "6")
+set(JDNS_LIB_MAJOR_VERSION "${PROJECT_VERSION_MAJOR}")
+set(JDNS_LIB_MINOR_VERSION "${PROJECT_VERSION_MINOR}")
+set(JDNS_LIB_PATCH_VERSION "${PROJECT_VERSION_PATCH}")
+set(JDNS_LIB_VERSION_STRING "${PROJECT_VERSION}")
 
-set(JDNS_LIB_VERSION_STRING "${JDNS_LIB_MAJOR_VERSION}.${JDNS_LIB_MINOR_VERSION}.${JDNS_LIB_PATCH_VERSION}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" )
-# Use the same path for shared and static library
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" )
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib" )
-
-
-# pkg-config
 if(NOT WIN32)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/jdns.pc.in
-                 ${CMAKE_CURRENT_BINARY_DIR}/jdns.pc
-                 @ONLY)
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/jdns.pc
-          DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
+    configure_file(jdns.pc.in jdns.pc @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/jdns.pc"
+        DESTINATION "${LIB_INSTALL_DIR}/pkgconfig")
 
-  if(BUILD_QJDNS)
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/qjdns.pc.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
-                   @ONLY)
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc
-            DESTINATION ${LIB_INSTALL_DIR}/pkgconfig)
-  endif(BUILD_QJDNS)
-endif(NOT WIN32)
+    if(BUILD_QJDNS)
+        configure_file(qjdns.pc.in "qjdns${QT_MAJ}.pc" @ONLY)
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/qjdns${QT_MAJ}.pc"
+            DESTINATION "${LIB_INSTALL_DIR}/pkgconfig")
+    endif()
+endif()
 
-include_directories("include/jdns/")
-
-# Subdirs
 add_subdirectory(src)
 
 if(BUILD_JDNS_TOOL)
-  add_subdirectory(tools/jdns)
-endif(BUILD_JDNS_TOOL)
+    add_subdirectory(tools/jdns)
+endif()
 
 configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
-  IMMEDIATE @ONLY)
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    @ONLY
+)
 
-# cmake-modules
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-  JDnsConfig.cmake.in
-  "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
-  INSTALL_DESTINATION ${JDNS_CONFIG_INSTALL_DIR}
-  PATH_VARS BIN_INSTALL_DIR
-            LIB_INSTALL_DIR
-            INCLUDE_INSTALL_DIR)
+    JDnsConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
+    INSTALL_DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+    PATH_VARS BIN_INSTALL_DIR LIB_INSTALL_DIR INCLUDE_INSTALL_DIR
+)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
+    VERSION "${JDNS_LIB_VERSION_STRING}"
+    COMPATIBILITY AnyNewerVersion
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
+    DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+)
+install(EXPORT jdns-export
+    DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+    FILE JDnsTargets.cmake
+)
 
-write_basic_config_version_file(JDnsConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
-
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake
-              ${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake
-        DESTINATION ${JDNS_CONFIG_INSTALL_DIR})
-
-install(EXPORT jdns-export DESTINATION ${JDNS_CONFIG_INSTALL_DIR} FILE JDnsTargets.cmake)
 if(BUILD_QJDNS)
-  install(EXPORT qjdns-export DESTINATION ${QJDNS_CONFIG_INSTALL_DIR} FILE QJDns${QT_MAJ}Targets.cmake)
+    install(EXPORT qjdns-export
+        DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+        FILE "QJDns${QT_MAJ}Targets.cmake"
+    )
 
-  # cmake-modules
-  configure_package_config_file(
-    QJDns-qtConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
-    INSTALL_DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
+    configure_package_config_file(
+        QJDns-qtConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
+        INSTALL_DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+    )
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
+        VERSION "${JDNS_LIB_VERSION_STRING}"
+        COMPATIBILITY AnyNewerVersion
+    )
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
+        DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+    )
 
-  write_basic_config_version_file(QJDns${QT_MAJ}ConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
-
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake
-                ${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake
-          DESTINATION ${QJDNS_CONFIG_INSTALL_DIR})
-
-  # Install QJDns config module which will automagically choose correct building of QJDns
-  if(MULTI_QT)
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/QJDnsConfig.cmake.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake
-                   COPYONLY)
-
-    write_basic_config_version_file(QJDnsConfigVersion.cmake VERSION ${JDNS_LIB_VERSION_STRING} COMPATIBILITY AnyNewerVersion)
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake
-                  ${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake
-            DESTINATION ${QJDNS_COMMON_CONFIG_INSTALL_DIR})
-  endif()
-
-endif(BUILD_QJDNS)
+    if(MULTI_QT)
+        configure_file(QJDnsConfig.cmake.in QJDnsConfig.cmake @ONLY)
+        write_basic_config_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
+            VERSION "${JDNS_LIB_VERSION_STRING}"
+            COMPATIBILITY AnyNewerVersion
+        )
+        install(FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
+            DESTINATION "${QJDNS_COMMON_CONFIG_INSTALL_DIR}"
+        )
+    endif()
+endif()
 
 add_custom_target(uninstall
-  "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
+    "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+)
 
-find_package(Doxygen)
+find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
-  configure_file(${CMAKE_SOURCE_DIR}/Doxyfile.in ${CMAKE_BINARY_DIR}/Doxyfile @ONLY)
-  add_custom_target(doc ALL
-    ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Generating API documentation with Doxygen" VERBATIM)
-  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/apidocs/html
-          DESTINATION ${DOC_INSTALL_DIR})
+    configure_file(Doxyfile.in Doxyfile @ONLY)
+    add_custom_target(doc
+        "${DOXYGEN_EXECUTABLE}" "${CMAKE_BINARY_DIR}/Doxyfile"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM
+    )
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/apidocs/html"
+        DESTINATION "${DOC_INSTALL_DIR}"
+        OPTIONAL
+    )
 endif()
