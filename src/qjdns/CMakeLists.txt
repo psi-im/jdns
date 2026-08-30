@@ -30,6 +30,8 @@ add_library(qjdns
 )
 add_library(QJDns::QJDns ALIAS qjdns)
 
+set_target_properties(qjdns PROPERTIES AUTOMOC ON)
+
 if(QT_MAJ)
     set_target_properties(qjdns PROPERTIES OUTPUT_NAME "qjdns${QT_MAJ}")
 endif()
