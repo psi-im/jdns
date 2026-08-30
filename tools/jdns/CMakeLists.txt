@@ -20,14 +20,16 @@ set_target_properties(jdns-tool PROPERTIES
 
 target_link_libraries(jdns-tool PRIVATE QJDns::QJDns)
 
-install(TARGETS jdns-tool
-    RUNTIME DESTINATION "${BIN_INSTALL_DIR}"
-)
-
-if(MSVC)
-    install(FILES "$<TARGET_PDB_FILE:jdns-tool>"
-        DESTINATION "${BIN_INSTALL_DIR}"
-        CONFIGURATIONS Debug RelWithDebInfo
-        OPTIONAL
+if(JDNS_ENABLE_INSTALL)
+    install(TARGETS jdns-tool
+        RUNTIME DESTINATION "${BIN_INSTALL_DIR}"
     )
+
+    if(MSVC)
+        install(FILES "$<TARGET_PDB_FILE:jdns-tool>"
+            DESTINATION "${BIN_INSTALL_DIR}"
+            CONFIGURATIONS Debug RelWithDebInfo
+            OPTIONAL
+        )
+    endif()
 endif()
