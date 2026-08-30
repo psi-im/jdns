@@ -20,6 +20,7 @@ endif()
 # controlled independently by the standard CMAKE_POSITION_INDEPENDENT_CODE.
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
+option(JDNS_ENABLE_INSTALL "Generate JDNS installation rules" ON)
 
 if(ANDROID)
     set(_jdns_build_tool_default OFF)
@@ -121,7 +122,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-if(NOT WIN32)
+if(JDNS_ENABLE_INSTALL AND NOT WIN32)
     configure_file(jdns.pc.in jdns.pc @ONLY)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/jdns.pc"
         DESTINATION "${LIB_INSTALL_DIR}/pkgconfig")
@@ -139,74 +140,76 @@ if(BUILD_JDNS_TOOL)
     add_subdirectory(tools/jdns)
 endif()
 
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
-    @ONLY
-)
-
-include(CMakePackageConfigHelpers)
-configure_package_config_file(
-    JDnsConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
-    INSTALL_DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
-    PATH_VARS BIN_INSTALL_DIR LIB_INSTALL_DIR INCLUDE_INSTALL_DIR
-)
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
-    VERSION "${JDNS_LIB_VERSION_STRING}"
-    COMPATIBILITY AnyNewerVersion
-)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
-    DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
-)
-install(EXPORT jdns-export
-    DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
-    FILE JDnsTargets.cmake
-)
-
-if(BUILD_QJDNS)
-    install(EXPORT qjdns-export
-        DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
-        FILE "QJDns${QT_MAJ}Targets.cmake"
+if(JDNS_ENABLE_INSTALL)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+        @ONLY
     )
 
+    include(CMakePackageConfigHelpers)
     configure_package_config_file(
-        QJDns-qtConfig.cmake.in
-        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
-        INSTALL_DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+        JDnsConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
+        INSTALL_DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+        PATH_VARS BIN_INSTALL_DIR LIB_INSTALL_DIR INCLUDE_INSTALL_DIR
     )
     write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
         VERSION "${JDNS_LIB_VERSION_STRING}"
         COMPATIBILITY AnyNewerVersion
     )
     install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
-        DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
+        DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+    )
+    install(EXPORT jdns-export
+        DESTINATION "${JDNS_CONFIG_INSTALL_DIR}"
+        FILE JDnsTargets.cmake
     )
 
-    if(MULTI_QT)
-        configure_file(QJDnsConfig.cmake.in QJDnsConfig.cmake @ONLY)
-        write_basic_config_version_file(
-            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
+    if(BUILD_QJDNS)
+        install(EXPORT qjdns-export
+            DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+            FILE "QJDns${QT_MAJ}Targets.cmake"
+        )
+
+        configure_package_config_file(
+            QJDns-qtConfig.cmake.in
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
+            INSTALL_DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
+        )
+        write_basic_package_version_file(
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
             VERSION "${JDNS_LIB_VERSION_STRING}"
             COMPATIBILITY AnyNewerVersion
         )
         install(FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake"
-            "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
-            DESTINATION "${QJDNS_COMMON_CONFIG_INSTALL_DIR}"
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
+            DESTINATION "${QJDNS_CONFIG_INSTALL_DIR}"
         )
-    endif()
-endif()
 
-add_custom_target(uninstall
-    "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
-)
+        if(MULTI_QT)
+            configure_file(QJDnsConfig.cmake.in QJDnsConfig.cmake @ONLY)
+            write_basic_config_version_file(
+                "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
+                VERSION "${JDNS_LIB_VERSION_STRING}"
+                COMPATIBILITY AnyNewerVersion
+            )
+            install(FILES
+                "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake"
+                "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
+                DESTINATION "${QJDNS_COMMON_CONFIG_INSTALL_DIR}"
+            )
+        endif()
+    endif()
+
+    add_custom_target(uninstall
+        "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    )
+endif()
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
@@ -217,8 +220,10 @@ if(DOXYGEN_FOUND)
         COMMENT "Generating API documentation with Doxygen"
         VERBATIM
     )
-    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/apidocs/html"
-        DESTINATION "${DOC_INSTALL_DIR}"
-        OPTIONAL
-    )
+    if(JDNS_ENABLE_INSTALL)
+        install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/apidocs/html"
+            DESTINATION "${DOC_INSTALL_DIR}"
+            OPTIONAL
+        )
+    endif()
 endif()
