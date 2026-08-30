@@ -29,9 +29,8 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include <QStringList>
-#include <QHash>
 
-class QUdpSocket;
+class QJDnsTransport;
 class QTimer;
 
 class SafeTimer : public QObject
@@ -83,16 +82,14 @@ public:
     QJDns *q;
     QJDns::Mode mode;
     jdns_session_t *sess;
+    QJDnsTransport *transport;
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
     SafeTimer stepTimeout;
     QElapsedTimer clock;
     QStringList debug_strings;
     bool new_debug_strings;
-    int next_handle;
     bool need_handle;
-    QHash<int,QUdpSocket*> socketForHandle;
-    QHash<QUdpSocket*,int> handleForSocket;
     int pending;
     bool pending_wait;
     bool complete_shutdown;
@@ -113,14 +110,15 @@ public:
     void processDebug();
     void doNextStep();
     void removeCancelled(int id);
-    
+
 private slots:
-    void udp_readyRead();
-    void udp_bytesWritten(qint64);
+    void transport_readyRead(int handle);
+    void transport_packetWritten();
+    void transport_debugLine(const QString &line);
     void st_timeout();
     void doNextStepSlot();
     void doDebug();
-    
+
 private:
     static int cb_time_now(jdns_session_t *, void *app);
     static int cb_rand_int(jdns_session_t *, void *);

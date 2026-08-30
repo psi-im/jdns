@@ -25,9 +25,14 @@
 
 #include <time.h>
 #include "qjdns_sock.h"
+#include "qjdns_transport.h"
+
+#include <QUdpSocket>
 
 // for fprintf
 #include <stdio.h>
+
+#include <cstring>
 
 // safeobj stuff, from qca
 
@@ -313,6 +318,7 @@ QJDns::Private::Private(QJDns *_q)
     , pResponses(0)
 {
     sess = 0;
+    transport = 0;
     shutting_down = false;
     new_debug_strings = false;
     pending = 0;
@@ -344,15 +350,11 @@ void QJDns::Private::cleanup()
         sess = 0;
     }
 
+    delete transport;
+    transport = 0;
+
     shutting_down = false;
     pending = 0;
-
-    // it is safe to delete the QUdpSocket objects here without
-    //   deleteLater, since this code path never occurs when
-    //   a signal from those objects is on the stack
-    qDeleteAll(socketForHandle);
-    socketForHandle.clear();
-    handleForSocket.clear();
 
     stepTrigger.stop();
     stepTimeout.stop();
@@ -363,7 +365,12 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 {
     mode = _mode;
 
-    jdns_callbacks_t callbacks;
+    transport = qjdns_create_transport(this, mode == Unicast);
+    connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
+    connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
+    connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
+
+    jdns_callbacks_t callbacks = {};
     callbacks.app = this;
     callbacks.time_now = cb_time_now;
     callbacks.rand_int = cb_rand_int;
@@ -374,7 +381,6 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     callbacks.udp_write = cb_udp_write;
     sess = jdns_session_new(&callbacks);
     jdns_set_hold_ids_enabled(sess, 1);
-    next_handle = 1;
     need_handle = false;
 
     int ret;
@@ -400,18 +406,33 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     {
         jdns_session_delete(sess);
         sess = 0;
+        delete transport;
+        transport = 0;
         return false;
     }
+
+    if(mode == Unicast && transport->capabilities().testFlag(QJDnsTransport::UsesSystemNameServers))
+        setNameServers(QList<NameServer>());
+
     return true;
 }
 
 void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
 {
-    jdns_nameserverlist_t *addrs = jdns_nameserverlist_new();
-    for(int n = 0; n < nslist.count(); ++n)
+    QList<NameServer> effectiveList = nslist;
+    if(mode == Unicast && transport && transport->capabilities().testFlag(QJDnsTransport::UsesSystemNameServers))
     {
-        jdns_address_t *addr = qt2addr(nslist[n].address);
-        jdns_nameserverlist_append(addrs, addr, nslist[n].port);
+        effectiveList.clear();
+        NameServer synthetic;
+        synthetic.address = QHostAddress::LocalHost;
+        effectiveList += synthetic;
+    }
+
+    jdns_nameserverlist_t *addrs = jdns_nameserverlist_new();
+    for(int n = 0; n < effectiveList.count(); ++n)
+    {
+        jdns_address_t *addr = qt2addr(effectiveList[n].address);
+        jdns_nameserverlist_append(addrs, addr, effectiveList[n].port);
         jdns_address_delete(addr);
     }
     jdns_set_nameservers(sess, addrs);
@@ -564,7 +585,7 @@ void QJDns::Private::doNextStep()
 
     if(finish_shutdown)
     {
-        // if we have pending udp packets to write, stick around
+        // if we have pending packets to write, stick around
         if(pending > 0)
         {
             pending_wait = true;
@@ -620,11 +641,8 @@ void QJDns::Private::removeCancelled(int id)
     }
 }
 
-void QJDns::Private::udp_readyRead()
+void QJDns::Private::transport_readyRead(int handle)
 {
-    QUdpSocket *sock = static_cast<QUdpSocket *>(sender());
-    int handle = handleForSocket.value(sock);
-
     if(need_handle)
     {
         jdns_set_handle_readable(sess, handle);
@@ -632,15 +650,14 @@ void QJDns::Private::udp_readyRead()
     }
     else
     {
-        // eat packet
-        QByteArray buf(4096, 0);
-        QHostAddress from_addr;
-        quint16 from_port;
-        sock->readDatagram(buf.data(), buf.size(), &from_addr, &from_port);
+        // Eat a response that arrived while jdns was not interested in
+        // readable handles, preserving the previous socket behaviour.
+        QJDnsTransport::Packet packet;
+        transport->takeResponse(handle, &packet);
     }
 }
 
-void QJDns::Private::udp_bytesWritten(qint64)
+void QJDns::Private::transport_packetWritten()
 {
     if(pending > 0)
     {
@@ -652,6 +669,12 @@ void QJDns::Private::udp_bytesWritten(qint64)
             process();
         }
     }
+}
+
+void QJDns::Private::transport_debugLine(const QString &line)
+{
+    debug_strings += line;
+    processDebug();
 }
 
 void QJDns::Private::st_timeout()
@@ -701,91 +724,34 @@ int QJDns::Private::cb_udp_bind(jdns_session_t *, void *app, const jdns_address_
 
     // we always pass non-null to jdns_init, so this should be a valid address
     QHostAddress host = addr2qt(addr);
-
-    QUdpSocket *sock = new QUdpSocket(self);
-    self->connect(sock, SIGNAL(readyRead()), SLOT(udp_readyRead()));
-
-    // use queued for bytesWritten, since qt is evil and emits before writeDatagram returns
-    qRegisterMetaType<qint64>("qint64");
-    self->connect(sock, SIGNAL(bytesWritten(qint64)), SLOT(udp_bytesWritten(qint64)), Qt::QueuedConnection);
-
-    QUdpSocket::BindMode mode;
-    mode |= QUdpSocket::ShareAddress;
-    mode |= QUdpSocket::ReuseAddressHint;
-    if(!sock->bind(host, port, mode))
-    {
-        delete sock;
-        return 0;
-    }
-
+    QHostAddress multicastAddress;
     if(maddr)
-    {
-        int sd = sock->socketDescriptor();
-        bool ok;
-        int errorCode;
-        if(maddr->isIpv6)
-            ok = qjdns_sock_setMulticast6(sd, maddr->addr.v6, &errorCode);
-        else
-            ok = qjdns_sock_setMulticast4(sd, maddr->addr.v4, &errorCode);
+        multicastAddress = addr2qt(maddr);
 
-        if(!ok)
-        {
-            delete sock;
-
-            self->debug_strings += QString("failed to setup multicast on the socket (errorCode=%1)").arg(errorCode);
-            self->processDebug();
-            return 0;
-        }
-
-        if(maddr->isIpv6)
-        {
-            qjdns_sock_setTTL6(sd, 255);
-            qjdns_sock_setIPv6Only(sd);
-        }
-        else
-            qjdns_sock_setTTL4(sd, 255);
-    }
-
-    int handle = self->next_handle++;
-    self->socketForHandle.insert(handle, sock);
-    self->handleForSocket.insert(sock, handle);
-    return handle;
+    return self->transport->open(host, static_cast<quint16>(port), multicastAddress);
 }
 
 void QJDns::Private::cb_udp_unbind(jdns_session_t *, void *app, int handle)
 {
     QJDns::Private *self = (QJDns::Private *)app;
-
-    QUdpSocket *sock = self->socketForHandle.value(handle);
-    if(!sock)
-        return;
-
-    self->socketForHandle.remove(handle);
-    self->handleForSocket.remove(sock);
-    delete sock;
+    self->transport->close(handle);
 }
 
 int QJDns::Private::cb_udp_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize)
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
-    QUdpSocket *sock = self->socketForHandle.value(handle);
-    if(!sock)
+    QJDnsTransport::Packet packet;
+    if(!self->transport->takeResponse(handle, &packet))
         return 0;
 
-    // nothing to read?
-    if(!sock->hasPendingDatagrams())
-        return 0;
+    const int size = qMin(*bufsize, packet.data.size());
+    if(size > 0)
+        std::memcpy(buf, packet.data.constData(), static_cast<size_t>(size));
 
-    QHostAddress from_addr;
-    quint16 from_port;
-    int ret = sock->readDatagram((char *)buf, *bufsize, &from_addr, &from_port);
-    if(ret == -1)
-        return 0;
-
-    qt2addr_set(addr, from_addr);
-    *port = (int)from_port;
-    *bufsize = ret;
+    qt2addr_set(addr, packet.sourceAddress);
+    *port = static_cast<int>(packet.sourcePort);
+    *bufsize = size;
     return 1;
 }
 
@@ -793,21 +759,13 @@ int QJDns::Private::cb_udp_write(jdns_session_t *, void *app, int handle, const 
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
-    QUdpSocket *sock = self->socketForHandle.value(handle);
-    if(!sock)
+    const QHostAddress host = addr2qt(addr);
+    const QByteArray packet(reinterpret_cast<const char *>(buf), bufsize);
+    const QJDnsTransport::SubmitResult result = self->transport->submit(handle, host, static_cast<quint16>(port), packet);
+    if(result == QJDnsTransport::RetryLater)
         return 0;
-
-    QHostAddress host = addr2qt(addr);
-    int ret = sock->writeDatagram((const char *)buf, bufsize, host, port);
-    if(ret == -1)
-    {
-        // this can happen if the datagram to send is too big.  i'm not sure what else
-        //   may cause this.  if we return 0, then jdns may try to resend the packet,
-        //   which might not work if it is too large (causing the same error over and
-        //   over).  we'll return success to jdns, so the result is as if the packet
-        //   was dropped.
+    if(result == QJDnsTransport::Dropped)
         return 1;
-    }
 
     ++self->pending;
     return 1;

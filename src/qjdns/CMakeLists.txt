@@ -4,12 +4,14 @@ set(qjdns_MOC_HDRS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
     qjdns_p.h
+    qjdns_transport.h
     qjdnsshared_p.h
 )
 
 set(qjdns_SRCS
     qjdns.cpp
     qjdns_sock.cpp
+    qjdns_transport.cpp
     qjdnsshared.cpp
 )
 
@@ -20,6 +22,7 @@ set(qjdns_PUBLIC_HEADERS
 
 set(qjdns_HEADERS
     qjdns_sock.h
+    qjdns_transport.h
 )
 
 add_library(qjdns
