@@ -15,6 +15,10 @@ set(qjdns_SRCS
     qjdnsshared.cpp
 )
 
+if(ANDROID)
+    list(APPEND qjdns_SRCS qjdns_androidtransport.cpp)
+endif()
+
 set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
@@ -50,6 +54,10 @@ target_link_libraries(qjdns
         JDns::JDns
         ${QJDNS_QT_TARGETS}
 )
+
+if(ANDROID)
+    target_link_libraries(qjdns PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 if(NOT ANDROID)
     set_target_properties(qjdns PROPERTIES

@@ -28,6 +28,10 @@
 #include <QHash>
 #include <QUdpSocket>
 
+#ifdef Q_OS_ANDROID
+QJDnsTransport *qjdns_create_android_transport(QObject *parent);
+#endif
+
 class QJDnsSocketTransport : public QJDnsTransport
 {
 public:
@@ -133,6 +137,14 @@ private:
 
 QJDnsTransport *qjdns_create_transport(QObject *parent, bool unicast)
 {
+#ifdef Q_OS_ANDROID
+    if(unicast)
+    {
+        if(QJDnsTransport *transport = qjdns_create_android_transport(parent))
+            return transport;
+    }
+#else
     Q_UNUSED(unicast)
+#endif
     return new QJDnsSocketTransport(parent);
 }
