@@ -1,11 +1,15 @@
 @PACKAGE_INIT@
 
-if(NOT JDns_FOUND)
-  find_package(JDns "@JDNS_LIB_VERSION_STRING@" REQUIRED)
-endif(NOT JDns_FOUND)
+include(CMakeFindDependencyMacro)
+find_dependency(JDns "@JDNS_LIB_VERSION_STRING@")
+find_dependency(Qt@JDNS_QT_MAJOR_VERSION@ REQUIRED COMPONENTS Core Network)
 
 if(NOT TARGET qjdns)
-	include(${CMAKE_CURRENT_LIST_DIR}/QJDns@QT_MAJ@Targets.cmake)
+    include("${CMAKE_CURRENT_LIST_DIR}/QJDns@QT_MAJ@Targets.cmake")
+endif()
+
+if(TARGET qjdns AND NOT TARGET QJDns::QJDns)
+    add_library(QJDns::QJDns ALIAS qjdns)
 endif()
 
 set(QJDns_LIBRARY qjdns)
