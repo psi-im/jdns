@@ -10,6 +10,7 @@ set(qjdns_MOC_HDRS
 
 set(qjdns_SRCS
     qjdns.cpp
+    qjdns_retryclock.cpp
     qjdns_sock.cpp
     qjdns_transport.cpp
     qjdnsshared.cpp
