@@ -2,6 +2,8 @@ name: Android
 
 on:
   push:
+    branches:
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -101,7 +103,8 @@ jobs:
           "$qt_cmake" -S consumer -B consumer-build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DANDROID_PLATFORM="android-${ANDROID_API}" \
-            "-DCMAKE_PREFIX_PATH=$PWD/sdk"
+            "-DJDns_DIR=$PWD/sdk/lib/cmake/jdns" \
+            "-DQJDns_DIR=$PWD/sdk/lib/cmake/qjdns"
           cmake --build consumer-build --parallel
 
       - uses: actions/upload-artifact@v4
