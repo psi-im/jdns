@@ -59,6 +59,23 @@ private:
     QTimer *t;
 };
 
+class QJDnsElapsedTimer
+{
+public:
+    explicit QJDnsElapsedTimer(QJDnsTransport *const *transport);
+
+    void start();
+    qint64 elapsed() const;
+
+private:
+    QJDnsTransport *const *transport_;
+    QElapsedTimer timer_;
+    mutable bool paused_ = false;
+    mutable qint64 pauseStartedReal_ = 0;
+    mutable qint64 pauseStartedVirtual_ = 0;
+    mutable qint64 pausedTotal_ = 0;
+};
+
 class QJDns::Private : public QObject
 {
     Q_OBJECT
@@ -86,7 +103,7 @@ public:
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
     SafeTimer stepTimeout;
-    QElapsedTimer clock;
+    QJDnsElapsedTimer clock{&transport};
     QStringList debug_strings;
     bool new_debug_strings;
     bool need_handle;
