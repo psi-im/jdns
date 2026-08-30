@@ -34,7 +34,8 @@ void QJDnsElapsedTimer::start()
 {
     paused_ = false;
     pauseStartedReal_ = 0;
-    pauseStartedVirtual_ = 0;
+    lastSampleReal_ = 0;
+    lastReturned_ = 0;
     pausedTotal_ = 0;
     timer_.start();
 }
@@ -51,18 +52,28 @@ qint64 QJDnsElapsedTimer::elapsed() const
     {
         if(!paused_)
         {
+            // jdns sampled the clock immediately before it submitted the
+            // packet. Freeze at that previous sample rather than at the
+            // first later retry-timer tick, otherwise an 800 ms jdns retry
+            // can race the transport which already owns retransmission.
             paused_ = true;
-            pauseStartedReal_ = real;
-            pauseStartedVirtual_ = real - pausedTotal_;
+            pauseStartedReal_ = lastSampleReal_;
         }
-        return pauseStartedVirtual_;
+        lastSampleReal_ = real;
+        return lastReturned_;
     }
 
     if(paused_)
     {
-        pausedTotal_ += real - pauseStartedReal_;
+        // The last sample taken while the request was pending is the closest
+        // event-loop approximation of transport completion. Do not include
+        // the time between consuming the response and this later sample in
+        // the paused interval; cache and inactive-query timers must advance.
+        pausedTotal_ += lastSampleReal_ - pauseStartedReal_;
         paused_ = false;
     }
 
-    return real - pausedTotal_;
+    lastSampleReal_ = real;
+    lastReturned_ = real - pausedTotal_;
+    return lastReturned_;
 }
