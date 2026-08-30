@@ -12,9 +12,20 @@ For maximum flexibility, JDNS is written in C with no direct dependencies,
 and is licensed under the MIT license.  Your application must supply
 functionality to JDNS, such as UDP sending/receiving, via callbacks.
 
-For Qt users there is a wrapper available called QJDns.  jdns.pri can
-be used to include everything into a qmake project. CMake-project will build
-the sample Qt-based commandline tool 'jdns'.
+For Qt users there is a wrapper available called QJDns. The project is built
+with CMake and supports Qt 5 and Qt 6. For example, a static Qt 6 build can be
+configured with:
+
+```sh
+cmake -S . -B build \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DBUILD_QJDNS=ON \
+  -DJDNS_QT_MAJOR_VERSION=6
+cmake --build build
+```
+
+The sample Qt-based command-line tool `jdns` is built by default on desktop
+platforms and can be disabled with `-DBUILD_JDNS_TOOL=OFF`.
 
 #### Features:
 * DNS client "stub" resolver

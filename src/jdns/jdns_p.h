@@ -57,6 +57,15 @@
 # include <netinet/in.h>
 #endif
 
+#ifdef __ANDROID__
+# include <arpa/inet.h>
+static inline int jdns_inet_aton(const char *cp, struct in_addr *inp)
+{
+    return inet_pton(AF_INET, cp, inp) == 1;
+}
+# define inet_aton jdns_inet_aton
+#endif
+
 #include "jdns.h"
 #include "jdns_packet.h"
 
@@ -77,10 +86,10 @@ char *jdns_strcpy(char *dst, const char *src);
 int jdns_string_indexOf(const jdns_string_t *s, unsigned char c, int pos);
 jdns_stringlist_t *jdns_string_split(const jdns_string_t *s, unsigned char sep);
 
-jdns_dnshost_t *jdns_dnshost_new();
+jdns_dnshost_t *jdns_dnshost_new(void);
 jdns_dnshost_t *jdns_dnshost_copy(const jdns_dnshost_t *a);
 void jdns_dnshost_delete(jdns_dnshost_t *a);
-jdns_dnshostlist_t *jdns_dnshostlist_new();
+jdns_dnshostlist_t *jdns_dnshostlist_new(void);
 jdns_dnshostlist_t *jdns_dnshostlist_copy(const jdns_dnshostlist_t *a);
 void jdns_dnshostlist_delete(jdns_dnshostlist_t *a);
 void jdns_dnshostlist_append(jdns_dnshostlist_t *a, const jdns_dnshost_t *host);
