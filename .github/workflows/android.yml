@@ -1,4 +1,4 @@
-name: Android
+name: Build and test
 
 on:
   push:
@@ -16,6 +16,41 @@ env:
   ANDROID_API: 28
 
 jobs:
+  linux:
+    name: Linux SRV smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build qt6-base-dev
+
+      - name: Configure and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_QJDNS=ON \
+            -DBUILD_JDNS_TOOL=ON \
+            -DJDNS_QT_MAJOR_VERSION=6 \
+            -DMULTI_QT=OFF
+          cmake --build build --parallel
+
+      - name: Resolve psi-im.org XMPP SRV
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool=$(find build -type f -name jdns -perm -111 -print -quit)
+          test -n "$tool"
+          output=$(timeout 20s "$tool" -q 15 uni srv _xmpp-client._tcp.psi-im.org 2>&1)
+          printf '%s\n' "$output"
+          grep -q 'SRV:' <<<"$output"
+
   android:
     runs-on: ubuntu-latest
     strategy:
