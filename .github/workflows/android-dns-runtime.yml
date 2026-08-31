@@ -203,6 +203,36 @@ jobs:
           name: jdns-dns-smoke-apk
           path: artifact
 
+      - name: Prepare smoke runner
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/jdns-dns-smoke-run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          adb logcat -c
+          adb install -r artifact/jdns-dns-smoke.apk
+          adb shell monkey -p org.psiim.jdns.dnssmoke -c android.intent.category.LAUNCHER 1 >/dev/null
+
+          for ((i = 0; i < 45; ++i)); do
+              logs="$(adb logcat -d -v brief | grep -E 'JDNS_DNS_(SMOKE|SRV)' || true)"
+              if grep -q 'JDNS_DNS_SMOKE_OK' <<<"$logs"; then
+                  echo "$logs"
+                  exit 0
+              fi
+              if grep -q 'JDNS_DNS_SMOKE_FAIL' <<<"$logs"; then
+                  echo "$logs"
+                  exit 1
+              fi
+              sleep 1
+          done
+
+          echo 'Timed out waiting for JDNS DNS smoke marker.'
+          adb logcat -d -v brief | tail -n 200
+          exit 1
+          SH
+          chmod +x "$RUNNER_TEMP/jdns-dns-smoke-run.sh"
+
       - name: Resolve XMPP SRV on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -211,29 +241,5 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -eu
-            apk="artifact/jdns-dns-smoke.apk"
-            adb logcat -c
-            adb install -r "$apk"
-            adb shell monkey -p org.psiim.jdns.dnssmoke -c android.intent.category.LAUNCHER 1 >/dev/null
-
-            i=0
-            while [ "$i" -lt 45 ]; do
-              logs="$(adb logcat -d -v brief | grep -E 'JDNS_DNS_(SMOKE|SRV)' || true)"
-              if echo "$logs" | grep -q 'JDNS_DNS_SMOKE_OK'; then
-                echo "$logs"
-                exit 0
-              fi
-              if echo "$logs" | grep -q 'JDNS_DNS_SMOKE_FAIL'; then
-                echo "$logs"
-                exit 1
-              fi
-              sleep 1
-              i=$((i + 1))
-            done
-
-            echo 'Timed out waiting for JDNS DNS smoke marker.'
-            adb logcat -d -v brief | tail -n 200
-            exit 1
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          script: bash "$RUNNER_TEMP/jdns-dns-smoke-run.sh"
