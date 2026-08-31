@@ -29,9 +29,8 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include <QStringList>
-#include <QHash>
 
-class QUdpSocket;
+class QJDnsTransport;
 class QTimer;
 
 class SafeTimer : public QObject
@@ -83,16 +82,14 @@ public:
     QJDns *q;
     QJDns::Mode mode;
     jdns_session_t *sess;
+    QJDnsTransport *transport;
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
     SafeTimer stepTimeout;
     QElapsedTimer clock;
     QStringList debug_strings;
     bool new_debug_strings;
-    int next_handle;
     bool need_handle;
-    QHash<int,QUdpSocket*> socketForHandle;
-    QHash<QUdpSocket*,int> handleForSocket;
     int pending;
     bool pending_wait;
     bool complete_shutdown;
@@ -113,22 +110,23 @@ public:
     void processDebug();
     void doNextStep();
     void removeCancelled(int id);
-    
+
 private slots:
-    void udp_readyRead();
-    void udp_bytesWritten(qint64);
+    void transport_readyRead(int handle);
+    void transport_packetWritten();
+    void transport_debugLine(const QString &line);
     void st_timeout();
     void doNextStepSlot();
     void doDebug();
-    
+
 private:
     static int cb_time_now(jdns_session_t *, void *app);
     static int cb_rand_int(jdns_session_t *, void *);
     static void cb_debug_line(jdns_session_t *, void *app, const char *str);
-    static int cb_udp_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
-    static void cb_udp_unbind(jdns_session_t *, void *app, int handle);
-    static int cb_udp_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize);
-    static int cb_udp_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize);
+    static int cb_transport_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
+    static void cb_transport_unbind(jdns_session_t *, void *app, int handle);
+    static int cb_transport_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize);
+    static int cb_transport_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize);
 };
 
 #endif

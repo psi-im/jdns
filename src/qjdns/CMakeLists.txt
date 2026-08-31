@@ -4,14 +4,20 @@ set(qjdns_MOC_HDRS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
     qjdns_p.h
+    qjdns_transport.h
     qjdnsshared_p.h
 )
 
 set(qjdns_SRCS
     qjdns.cpp
     qjdns_sock.cpp
+    qjdns_transport.cpp
     qjdnsshared.cpp
 )
+
+if(ANDROID)
+    list(APPEND qjdns_SRCS qjdns_androidtransport.cpp)
+endif()
 
 set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
@@ -20,6 +26,7 @@ set(qjdns_PUBLIC_HEADERS
 
 set(qjdns_HEADERS
     qjdns_sock.h
+    qjdns_transport.h
 )
 
 add_library(qjdns
@@ -48,6 +55,10 @@ target_link_libraries(qjdns
         ${QJDNS_QT_TARGETS}
 )
 
+if(ANDROID)
+    target_link_libraries(qjdns PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 if(NOT ANDROID)
     set_target_properties(qjdns PROPERTIES
         VERSION "${JDNS_LIB_VERSION_STRING}"
@@ -60,19 +71,21 @@ set_target_properties(qjdns PROPERTIES
     PUBLIC_HEADER "${qjdns_PUBLIC_HEADERS}"
 )
 
-install(TARGETS qjdns
-    EXPORT qjdns-export
-    LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
-    RUNTIME DESTINATION "${BIN_INSTALL_DIR}"
-    ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
-    PUBLIC_HEADER DESTINATION "${INCLUDE_INSTALL_DIR}/jdns"
-    INCLUDES DESTINATION "${INCLUDE_INSTALL_DIR}/jdns"
-)
-
-if(MSVC AND BUILD_SHARED_LIBS)
-    install(FILES "$<TARGET_PDB_FILE:qjdns>"
-        DESTINATION "${BIN_INSTALL_DIR}"
-        CONFIGURATIONS Debug RelWithDebInfo
-        OPTIONAL
+if(JDNS_ENABLE_INSTALL)
+    install(TARGETS qjdns
+        EXPORT qjdns-export
+        LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
+        RUNTIME DESTINATION "${BIN_INSTALL_DIR}"
+        ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
+        PUBLIC_HEADER DESTINATION "${INCLUDE_INSTALL_DIR}/jdns"
+        INCLUDES DESTINATION "${INCLUDE_INSTALL_DIR}/jdns"
     )
+
+    if(MSVC AND BUILD_SHARED_LIBS)
+        install(FILES "$<TARGET_PDB_FILE:qjdns>"
+            DESTINATION "${BIN_INSTALL_DIR}"
+            CONFIGURATIONS Debug RelWithDebInfo
+            OPTIONAL
+        )
+    endif()
 endif()
