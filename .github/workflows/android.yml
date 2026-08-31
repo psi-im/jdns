@@ -28,28 +28,110 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build qt6-base-dev
 
-      - name: Configure and build
+      - name: Build and install QJDns
         shell: bash
         run: |
           set -euo pipefail
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/sdk" \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_QJDNS=ON \
-            -DBUILD_JDNS_TOOL=ON \
+            -DBUILD_JDNS_TOOL=OFF \
             -DJDNS_QT_MAJOR_VERSION=6 \
             -DMULTI_QT=OFF
           cmake --build build --parallel
+          cmake --install build
+
+      - name: Build SRV smoke consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir smoke
+          cat > smoke/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.19)
+          project(jdns_srv_smoke LANGUAGES CXX)
+          set(CMAKE_CXX_STANDARD 17)
+          find_package(Qt6 REQUIRED COMPONENTS Core Network)
+          find_package(QJDns CONFIG REQUIRED)
+          add_executable(jdns-srv-smoke main.cpp)
+          target_link_libraries(jdns-srv-smoke PRIVATE QJDns::QJDns)
+          CMAKE
+          cat > smoke/main.cpp <<'CPP'
+          #include <qjdns.h>
+
+          #include <QCoreApplication>
+          #include <QDebug>
+          #include <QTimer>
+
+          int main(int argc, char **argv)
+          {
+              QCoreApplication app(argc, argv);
+              QJDns jdns;
+              int exitCode = 1;
+
+              if (!jdns.init(QJDns::Unicast, QHostAddress::Any)) {
+                  qCritical() << "Unable to initialize QJDns";
+                  return 2;
+              }
+
+              const auto systemInfo = QJDns::systemInfo();
+              if (systemInfo.nameServers.isEmpty()) {
+                  qCritical() << "No system DNS servers detected";
+                  return 3;
+              }
+              jdns.setNameServers(systemInfo.nameServers);
+
+              QObject::connect(&jdns, &QJDns::resultsReady, &app,
+                               [&](int, const QJDns::Response &response) {
+                                   int srvCount = 0;
+                                   for (const auto &record : response.answerRecords) {
+                                       if (record.type != QJDns::Srv)
+                                           continue;
+                                       ++srvCount;
+                                       qInfo().noquote()
+                                           << "SRV"
+                                           << QString::fromLatin1(record.name)
+                                           << "port" << record.port
+                                           << "priority" << record.priority
+                                           << "weight" << record.weight;
+                                   }
+                                   exitCode = srvCount > 0 ? 0 : 4;
+                                   if (!srvCount)
+                                       qCritical() << "No SRV records returned";
+                                   jdns.shutdown();
+                               });
+
+              QObject::connect(&jdns, &QJDns::error, &app,
+                               [&](int, QJDns::Error error) {
+                                   qCritical() << "QJDns query failed" << error;
+                                   exitCode = 5;
+                                   jdns.shutdown();
+                               });
+
+              QObject::connect(&jdns, &QJDns::shutdownFinished, &app,
+                               [&] { app.exit(exitCode); });
+
+              QTimer::singleShot(15000, &app, [&] {
+                  qCritical() << "SRV lookup timed out";
+                  exitCode = 6;
+                  jdns.shutdown();
+              });
+
+              jdns.queryStart("_xmpp-client._tcp.psi-im.org", QJDns::Srv);
+              return app.exec();
+          }
+          CPP
+          cmake -S smoke -B smoke-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/sdk"
+          cmake --build smoke-build --parallel
 
       - name: Resolve psi-im.org XMPP SRV
         shell: bash
         run: |
           set -euo pipefail
-          tool=$(find build -type f -name jdns -perm -111 -print -quit)
-          test -n "$tool"
-          output=$(timeout 20s "$tool" -q 15 uni srv _xmpp-client._tcp.psi-im.org 2>&1)
-          printf '%s\n' "$output"
-          grep -q 'SRV:' <<<"$output"
+          timeout 20s ./smoke-build/jdns-srv-smoke
 
   android:
     runs-on: ubuntu-latest
