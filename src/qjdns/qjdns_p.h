@@ -59,24 +59,6 @@ private:
     QTimer *t;
 };
 
-class QJDnsElapsedTimer
-{
-public:
-    explicit QJDnsElapsedTimer(QJDnsTransport *const *transport);
-
-    void start();
-    qint64 elapsed() const;
-
-private:
-    QJDnsTransport *const *transport_;
-    QElapsedTimer timer_;
-    mutable bool paused_ = false;
-    mutable qint64 pauseStartedReal_ = 0;
-    mutable qint64 lastSampleReal_ = 0;
-    mutable qint64 lastReturned_ = 0;
-    mutable qint64 pausedTotal_ = 0;
-};
-
 class QJDns::Private : public QObject
 {
     Q_OBJECT
@@ -104,7 +86,7 @@ public:
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
     SafeTimer stepTimeout;
-    QJDnsElapsedTimer clock{&transport};
+    QElapsedTimer clock;
     QStringList debug_strings;
     bool new_debug_strings;
     bool need_handle;
@@ -141,10 +123,10 @@ private:
     static int cb_time_now(jdns_session_t *, void *app);
     static int cb_rand_int(jdns_session_t *, void *);
     static void cb_debug_line(jdns_session_t *, void *app, const char *str);
-    static int cb_udp_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
-    static void cb_udp_unbind(jdns_session_t *, void *app, int handle);
-    static int cb_udp_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize);
-    static int cb_udp_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize);
+    static int cb_transport_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
+    static void cb_transport_unbind(jdns_session_t *, void *app, int handle);
+    static int cb_transport_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize);
+    static int cb_transport_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize);
 };
 
 #endif

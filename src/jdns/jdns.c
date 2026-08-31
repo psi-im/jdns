@@ -29,8 +29,8 @@
 #include "jdns_packet.h"
 #include "jdns_mdnsd.h"
 
-#define JDNS_UDP_UNI_OUT_MAX  512
-#define JDNS_UDP_UNI_IN_MAX   16384
+#define JDNS_UNICAST_OUT_MAX  512
+#define JDNS_UNICAST_IN_MAX   16384
 #define JDNS_UDP_MUL_OUT_MAX  9000
 #define JDNS_UDP_MUL_IN_MAX   16384
 
@@ -985,6 +985,7 @@ struct jdns_session
 {
     jdns_callbacks_t cb;
     int mode;
+    int managed_unicast;
     int shutdown;
     int next_qid;
     int next_req_id;
@@ -1015,6 +1016,7 @@ jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
 {
     jdns_session_t *s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
+    s->managed_unicast = 0;
     s->shutdown = 0;
     s->next_qid = 0;
     s->next_req_id = 1;
@@ -1047,7 +1049,7 @@ void jdns_session_delete(jdns_session_t *s)
     if(!s)
         return;
     if(s->handle)
-        s->cb.udp_unbind(s, s->cb.app, s->handle);
+        s->cb.transport_unbind(s, s->cb.app, s->handle);
     list_delete(s->name_servers);
     list_delete(s->queries);
     list_delete(s->outgoing);
@@ -1260,7 +1262,7 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
 {
     int ret;
     s->mode = 0;
-    ret = s->cb.udp_bind(s, s->cb.app, addr, port, 0);
+    ret = s->cb.transport_bind(s, s->cb.app, addr, port, 0);
     if(ret <= 0)
         return 0;
     s->handle = ret;
@@ -1268,11 +1270,19 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
     return 1;
 }
 
+void jdns_set_managed_unicast(jdns_session_t *s, int enabled)
+{
+    if(s->mode != 0)
+        return;
+
+    s->managed_unicast = enabled ? 1 : 0;
+}
+
 int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     int ret;
     s->mode = 1;
-    ret = s->cb.udp_bind(s, s->cb.app, addr, port, maddr);
+    ret = s->cb.transport_bind(s, s->cb.app, addr, port, maddr);
     if(ret <= 0)
         return 0;
     s->handle = ret;
@@ -1293,6 +1303,9 @@ void jdns_shutdown(jdns_session_t *s)
 void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist)
 {
     int n, k;
+
+    if(s->managed_unicast)
+        return;
 
     // removed?
     for(k = 0; k < s->name_servers->count; ++k)
@@ -1765,7 +1778,7 @@ void _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int r
         jdns_list_insert(packet->questions, question, -1);
         jdns_packet_question_delete(question);
     }
-    if(!jdns_packet_export(packet, JDNS_UDP_UNI_OUT_MAX))
+    if(!jdns_packet_export(packet, JDNS_UNICAST_OUT_MAX))
     {
         _debug_line(s, "outgoing packet export error, not sending");
         jdns_packet_delete(packet);
@@ -1774,13 +1787,22 @@ void _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int r
 
     a = datagram_new();
     a->handle = s->handle;
-    a->dest_address = jdns_address_copy(ns->address);
-    a->dest_port = ns->port;
+    if(ns)
+    {
+        a->dest_address = jdns_address_copy(ns->address);
+        a->dest_port = ns->port;
+        a->ns_id = ns->id;
+    }
+    else
+    {
+        a->dest_address = 0;
+        a->dest_port = 0;
+        a->ns_id = -1;
+    }
     a->data = jdns_copy_array(packet->raw_data, packet->raw_size);
     a->size = packet->raw_size;
     a->query = q;
     a->query_send_type = query_send_type;
-    a->ns_id = ns->id;
 
     jdns_packet_delete(packet);
 
@@ -1960,14 +1982,12 @@ int _unicast_do_writes(jdns_session_t *s, int now)
 
         giveup = 0;
 
-        // too many tries, give up
-        if(q->step == 8)
+        // Retry and nameserver selection belong to JDNS only for the
+        // classic unicast transport. A managed transport owns both.
+        if(!s->managed_unicast && q->step == 8)
             giveup = 1;
 
-        // no nameservers, give up
-        //  (this would happen if someone removed all nameservers
-        //   during a query)
-        if(s->name_servers->count == 0)
+        if(!s->managed_unicast && s->name_servers->count == 0)
             giveup = 1;
 
         if(giveup)
@@ -2045,6 +2065,29 @@ int _unicast_do_writes(jdns_session_t *s, int now)
                 --n; // adjust position
                 continue;
             }
+        }
+
+        if(s->managed_unicast)
+        {
+            // The transport receives one complete DNS request and owns
+            // routing, retry and failover until it produces a response.
+            already_sending = 0;
+            for(k = 0; k < s->outgoing->count; ++k)
+            {
+                datagram_t *a = (datagram_t *)s->outgoing->item[k];
+                if(a->query == q && a->query_send_type == 0)
+                {
+                    already_sending = 1;
+                    break;
+                }
+            }
+            if(!already_sending)
+                _queue_packet(s, q, 0, 1, 0);
+
+            // No JDNS retry timer while the transport owns this request.
+            q->time_start = -1;
+            ++q->step;
+            continue;
         }
 
         // out of name servers?
@@ -2128,10 +2171,13 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             break;
         }
 
-        _debug_line(s, "SEND %s:%d (size=%d)", a->dest_address->c_str, a->dest_port, a->size);
+        if(a->dest_address)
+            _debug_line(s, "SEND %s:%d (size=%d)", a->dest_address->c_str, a->dest_port, a->size);
+        else
+            _debug_line(s, "SEND managed (size=%d)", a->size);
         _print_hexdump(s, a->data, a->size);
 
-        ret = s->cb.udp_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
+        ret = s->cb.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
         if(ret == 0)
         {
             s->handle_writable = 0;
@@ -2229,8 +2275,8 @@ int _unicast_do_reads(jdns_session_t *s, int now)
 
     while(1)
     {
-        unsigned char buf[JDNS_UDP_UNI_IN_MAX];
-        int bufsize = JDNS_UDP_UNI_IN_MAX;
+        unsigned char buf[JDNS_UNICAST_IN_MAX];
+        int bufsize = JDNS_UNICAST_IN_MAX;
         int ret;
         jdns_packet_t *packet;
         jdns_address_t *addr;
@@ -2239,7 +2285,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
         name_server_t *ns;
 
         addr = jdns_address_new();
-        ret = s->cb.udp_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
+        ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
 
         // no packet?
         if(ret == 0)
@@ -2249,7 +2295,10 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             break;
         }
 
-        _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
+        if(s->managed_unicast)
+            _debug_line(s, "RECV managed (size=%d)", bufsize);
+        else
+            _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
         _print_hexdump(s, buf, bufsize);
 
         if(!jdns_packet_import(&packet, buf, bufsize))
@@ -2287,7 +2336,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             }
         }
 
-        if(q)
+        if(q && !s->managed_unicast)
         {
             // what name server did it come from?
             for(k = 0; k < s->name_servers->count; ++k)
@@ -3344,7 +3393,7 @@ int jdns_step_multicast(jdns_session_t *s, int now)
         _debug_line(s, "SEND %s:%d (size=%d)", addr->c_str, port, buf_len);
         _print_hexdump(s, buf, buf_len);
 
-        ret = s->cb.udp_write(s, s->cb.app, s->handle, addr, port, buf, buf_len);
+        ret = s->cb.transport_write(s, s->cb.app, s->handle, addr, port, buf, buf_len);
 
         jdns_address_delete(addr);
         jdns_packet_delete(packet);
@@ -3383,7 +3432,7 @@ int jdns_step_multicast(jdns_session_t *s, int now)
             jdns_response_t *r;
 
             addr = jdns_address_new();
-            ret = s->cb.udp_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
+            ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
 
             // no packet?
             if(ret == 0)

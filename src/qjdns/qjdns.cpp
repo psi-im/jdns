@@ -375,10 +375,10 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     callbacks.time_now = cb_time_now;
     callbacks.rand_int = cb_rand_int;
     callbacks.debug_line = cb_debug_line;
-    callbacks.udp_bind = cb_udp_bind;
-    callbacks.udp_unbind = cb_udp_unbind;
-    callbacks.udp_read = cb_udp_read;
-    callbacks.udp_write = cb_udp_write;
+    callbacks.transport_bind = cb_transport_bind;
+    callbacks.transport_unbind = cb_transport_unbind;
+    callbacks.transport_read = cb_transport_read;
+    callbacks.transport_write = cb_transport_write;
     sess = jdns_session_new(&callbacks);
     jdns_set_hold_ids_enabled(sess, 1);
     need_handle = false;
@@ -389,6 +389,8 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     if(mode == Unicast)
     {
         ret = jdns_init_unicast(sess, baddr, 0);
+        if(ret && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+            jdns_set_managed_unicast(sess, 1);
     }
     else
     {
@@ -411,28 +413,19 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
         return false;
     }
 
-    if(mode == Unicast && transport->capabilities().testFlag(QJDnsTransport::UsesSystemNameServers))
-        setNameServers(QList<NameServer>());
-
     return true;
 }
 
 void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
 {
-    QList<NameServer> effectiveList = nslist;
-    if(mode == Unicast && transport && transport->capabilities().testFlag(QJDnsTransport::UsesSystemNameServers))
-    {
-        effectiveList.clear();
-        NameServer synthetic;
-        synthetic.address = QHostAddress::LocalHost;
-        effectiveList += synthetic;
-    }
+    if(mode == Unicast && transport && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+        return;
 
     jdns_nameserverlist_t *addrs = jdns_nameserverlist_new();
-    for(int n = 0; n < effectiveList.count(); ++n)
+    for(int n = 0; n < nslist.count(); ++n)
     {
-        jdns_address_t *addr = qt2addr(effectiveList[n].address);
-        jdns_nameserverlist_append(addrs, addr, effectiveList[n].port);
+        jdns_address_t *addr = qt2addr(nslist[n].address);
+        jdns_nameserverlist_append(addrs, addr, nslist[n].port);
         jdns_address_delete(addr);
     }
     jdns_set_nameservers(sess, addrs);
@@ -718,7 +711,7 @@ void QJDns::Private::cb_debug_line(jdns_session_t *, void *app, const char *str)
     self->processDebug();
 }
 
-int QJDns::Private::cb_udp_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
+int QJDns::Private::cb_transport_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
@@ -731,13 +724,13 @@ int QJDns::Private::cb_udp_bind(jdns_session_t *, void *app, const jdns_address_
     return self->transport->open(host, static_cast<quint16>(port), multicastAddress);
 }
 
-void QJDns::Private::cb_udp_unbind(jdns_session_t *, void *app, int handle)
+void QJDns::Private::cb_transport_unbind(jdns_session_t *, void *app, int handle)
 {
     QJDns::Private *self = (QJDns::Private *)app;
     self->transport->close(handle);
 }
 
-int QJDns::Private::cb_udp_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize)
+int QJDns::Private::cb_transport_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize)
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
@@ -749,17 +742,20 @@ int QJDns::Private::cb_udp_read(jdns_session_t *, void *app, int handle, jdns_ad
     if(size > 0)
         std::memcpy(buf, packet.data.constData(), static_cast<size_t>(size));
 
-    qt2addr_set(addr, packet.sourceAddress);
+    if(!packet.sourceAddress.isNull())
+        qt2addr_set(addr, packet.sourceAddress);
     *port = static_cast<int>(packet.sourcePort);
     *bufsize = size;
     return 1;
 }
 
-int QJDns::Private::cb_udp_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize)
+int QJDns::Private::cb_transport_write(jdns_session_t *, void *app, int handle, const jdns_address_t *addr, int port, unsigned char *buf, int bufsize)
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
-    const QHostAddress host = addr2qt(addr);
+    QHostAddress host;
+    if(addr)
+        host = addr2qt(addr);
     const QByteArray packet(reinterpret_cast<const char *>(buf), bufsize);
     const QJDnsTransport::SubmitResult result = self->transport->submit(handle, host, static_cast<quint16>(port), packet);
     if(result == QJDnsTransport::RetryLater)

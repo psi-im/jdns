@@ -34,9 +34,7 @@ class QJDnsTransport : public QObject
     Q_OBJECT
 public:
     enum Capability {
-        HandlesRetries = 0x01,
-        HandlesFailover = 0x02,
-        UsesSystemNameServers = 0x04
+        ManagedUnicast = 0x01
     };
     Q_DECLARE_FLAGS(Capabilities, Capability)
 
@@ -57,7 +55,6 @@ public:
     ~QJDnsTransport() override = default;
 
     virtual Capabilities capabilities() const { return {}; }
-    virtual bool hasPendingRequests() const { return false; }
     virtual int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) = 0;
     virtual void close(int handle) = 0;
     virtual SubmitResult submit(int handle, const QHostAddress &destination, quint16 port, const QByteArray &packet) = 0;

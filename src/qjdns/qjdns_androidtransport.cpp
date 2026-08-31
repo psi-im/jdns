@@ -313,12 +313,7 @@ public:
 
     Capabilities capabilities() const override
     {
-        return HandlesRetries | HandlesFailover | UsesSystemNameServers;
-    }
-
-    bool hasPendingRequests() const override
-    {
-        return !outstanding_.isEmpty();
+        return ManagedUnicast;
     }
 
     int open(const QHostAddress &, quint16, const QHostAddress &multicastAddress) override
@@ -409,8 +404,6 @@ protected:
     {
         QueuedResponse response;
         response.key = key;
-        response.packet.sourceAddress = QHostAddress::LocalHost;
-        response.packet.sourcePort = DnsPort;
         response.packet.data = data;
         responses_[handle].enqueue(response);
         queueReadyRead(handle);

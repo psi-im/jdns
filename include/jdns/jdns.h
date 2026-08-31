@@ -345,42 +345,42 @@ typedef struct jdns_callbacks
      * @param maddr multicast address.  0 if not using multicast
      * @return handle (>0) of bound socket, or 0 on error
      */
-    int (*udp_bind)(jdns_session_t *s, void *app,
+    int (*transport_bind)(jdns_session_t *s, void *app,
         const jdns_address_t *addr, int port,
         const jdns_address_t *maddr);
 
     /**
      * @param s session
      * @param app user-supplied context
-     * @param handle handle of socket obtained with udp_bind
+     * @param handle transport handle obtained with transport_bind
      */
-    void (*udp_unbind)(jdns_session_t *s, void *app, int handle);
+    void (*transport_unbind)(jdns_session_t *s, void *app, int handle);
 
     /**
      * @param s session
      * @param app user-supplied context
-     * @param handle handle of socket obtained with udp_bind
+     * @param handle transport handle obtained with transport_bind
      * @param addr store ip address of sender
      * @param port store port of sender
      * @param buf store packet content
      * @param bufsize value contains max size, to be changed to real size
      * @return 1 if packet read, 0 if none available
      */
-    int (*udp_read)(jdns_session_t *s, void *app, int handle,
+    int (*transport_read)(jdns_session_t *s, void *app, int handle,
         jdns_address_t *addr, int *port, unsigned char *buf,
         int *bufsize);
 
     /**
      * @param s session
      * @param app user-supplied context
-     * @param handle handle of socket obtained with udp_bind
+     * @param handle transport handle obtained with transport_bind
      * @param addr ip address of recipient
      * @param port port of recipient
      * @param buf packet content
      * @param bufsize size of packet
      * @return 1 if packet taken for writing, 0 if this is a bad time
      */
-    int (*udp_write)(jdns_session_t *s, void *app, int handle,
+    int (*transport_write)(jdns_session_t *s, void *app, int handle,
         const jdns_address_t *addr, int port, unsigned char *buf,
         int bufsize);
 } jdns_callbacks_t;
@@ -429,6 +429,17 @@ JDNS_EXPORT void jdns_session_delete(jdns_session_t *s);
  * @return 1 on success, 0 on failure
  */
 JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port);
+
+/**
+ * Select a managed unicast transport. In this mode JDNS builds and parses
+ * DNS packets, while the transport owns destination selection, retries and
+ * failover. A nameserver list is not required. This must be configured
+ * before starting queries.
+ *
+ * @param s session
+ * @param enabled non-zero to enable managed unicast
+ */
+JDNS_EXPORT void jdns_set_managed_unicast(jdns_session_t *s, int enabled);
 
 /**
  * @param s session
