@@ -1,0 +1,32 @@
+name: QJDns remote transport build
+
+on:
+  push:
+    branches: [ai/pluggable-dns-tcp-doh]
+  pull_request:
+
+jobs:
+  qt:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        qt: [5, 6]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build qtbase5-dev qt6-base-dev
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -D BUILD_QJDNS=ON
+          -D BUILD_JDNS_TOOL=OFF
+          -D JDNS_QT_MAJOR_VERSION=${{ matrix.qt }}
+          -D JDNS_ENABLE_INSTALL=OFF
+          -D CMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
