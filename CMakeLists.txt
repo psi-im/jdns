@@ -6,7 +6,6 @@ project(jdns
 )
 
 include(GNUInstallDirs)
-include(CTest)
 
 # On Windows debug libraries use the conventional 'd' postfix. Keep the
 # historical macOS postfix for compatibility with existing consumers.
@@ -21,6 +20,7 @@ endif()
 # controlled independently by the standard CMAKE_POSITION_INDEPENDENT_CODE.
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
+option(JDNS_BUILD_TESTS "Build QJDns transport tests" OFF)
 option(JDNS_ENABLE_INSTALL "Generate JDNS installation rules" ON)
 
 if(ANDROID)
@@ -137,7 +137,8 @@ endif()
 
 add_subdirectory(src)
 
-if(BUILD_TESTING AND BUILD_QJDNS)
+if(JDNS_BUILD_TESTS AND BUILD_QJDNS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
 
