@@ -15,6 +15,7 @@
 #include <QTest>
 #include <QTimer>
 #include <cstring>
+#include <memory>
 
 namespace {
 void put16(QByteArray *buf, quint16 v)
@@ -181,6 +182,87 @@ private slots:
         QVERIFY(success);
         QVERIFY(!failure);
         QCOMPARE(requests, 1);
+    }
+
+    void tcpOverSocks5ResolvesDnsServerRemotely()
+    {
+        QTcpServer socks;
+        QVERIFY(socks.listen(QHostAddress::LocalHost, 0));
+        QString connectHost;
+        int responses = 0;
+        connect(&socks, &QTcpServer::newConnection, &socks, [&]() {
+            auto *client = socks.nextPendingConnection();
+            struct Session {
+                enum State { Greeting, Connect, Data } state = Greeting;
+                QByteArray buffer;
+            };
+            auto session = std::make_shared<Session>();
+            connect(client, &QTcpSocket::readyRead, client, [&, client, session]() {
+                session->buffer += client->readAll();
+                for(;;)
+                {
+                    if(session->state == Session::Greeting)
+                    {
+                        if(session->buffer.size() < 2)
+                            return;
+                        const int methods = quint8(session->buffer.at(1));
+                        if(session->buffer.size() < methods + 2)
+                            return;
+                        session->buffer.remove(0, methods + 2);
+                        client->write(QByteArray::fromHex("0500")); // SOCKS5, no authentication
+                        session->state = Session::Connect;
+                    }
+                    else if(session->state == Session::Connect)
+                    {
+                        if(session->buffer.size() < 5)
+                            return;
+                        if(quint8(session->buffer.at(0)) != 5 ||
+                           quint8(session->buffer.at(1)) != 1 ||
+                           quint8(session->buffer.at(3)) != 3)
+                            return;
+                        const int length = quint8(session->buffer.at(4));
+                        if(session->buffer.size() < length + 7)
+                            return;
+                        connectHost = QString::fromLatin1(session->buffer.mid(5, length));
+                        session->buffer.remove(0, length + 7);
+                        client->write(QByteArray::fromHex("050000017f0000010035"));
+                        session->state = Session::Data;
+                    }
+                    else
+                    {
+                        if(session->buffer.size() < 2)
+                            return;
+                        const int length = get16(session->buffer, 0);
+                        if(session->buffer.size() < length + 2)
+                            return;
+                        const QByteArray answer = srvAnswer(session->buffer.mid(2, length));
+                        QByteArray framed;
+                        put16(&framed, quint16(answer.size()));
+                        framed += answer;
+                        session->buffer.remove(0, length + 2);
+                        ++responses;
+                        client->write(framed);
+                        return;
+                    }
+                }
+            });
+        });
+
+        QJDns dns;
+        auto *transport = new QJDnsRemoteTransport;
+        transport->configureTcp(QStringLiteral("dns-server.invalid"), 53,
+                                QNetworkProxy(QNetworkProxy::Socks5Proxy,
+                                              QStringLiteral("127.0.0.1"), socks.serverPort()));
+        QVERIFY(dns.setTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        bool success = false;
+        connect(&dns, &QJDns::resultsReady, &dns, [&](int, const QJDns::Response &answer) {
+            success = containsExpectedSrv(answer);
+        });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(success, 5000);
+        QCOMPARE(connectHost, QStringLiteral("dns-server.invalid"));
+        QCOMPARE(responses, 1);
     }
 
     void dohUsesCallerManagerAndJdnsParser()
