@@ -6,6 +6,7 @@ project(jdns
 )
 
 include(GNUInstallDirs)
+include(CTest)
 
 # On Windows debug libraries use the conventional 'd' postfix. Keep the
 # historical macOS postfix for compatibility with existing consumers.
@@ -135,6 +136,10 @@ if(JDNS_ENABLE_INSTALL AND NOT WIN32)
 endif()
 
 add_subdirectory(src)
+
+if(BUILD_TESTING AND BUILD_QJDNS)
+    add_subdirectory(tests)
+endif()
 
 if(BUILD_JDNS_TOOL)
     add_subdirectory(tools/jdns)
