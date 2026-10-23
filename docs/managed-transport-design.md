@@ -4,8 +4,8 @@
 
 JDNS (C) owns DNS query encoding, response decoding, SRV/CNAME parsing, caching
 and TTLs. QJDns is the Qt event-loop integration. The old Qt transport was a
-private \`QJDnsTransport\` interface with UDP on desktop. Android implemented
-\`ManagedUnicast\`: requests are whole DNS wire packets, destination selection
+private `QJDnsTransport` interface with UDP on desktop. Android implemented
+`ManagedUnicast`: requests are whole DNS wire packets, destination selection
 and retry policy move to the transport, and the transport returns whole DNS
 wire responses. Android already contains private DNS-over-TCP framing and
 DNS-over-TLS code for platform DNS.
@@ -14,12 +14,12 @@ No TCP or HTTP stack belongs in the JDNS C parser.
 
 ## Proposed API and ownership
 
-- \`QJDns::setTransport(QJDnsTransport *)\` transfers ownership to QJDns **before**
-  calling \`init()\`; the default path is unchanged when no transport is injected.
-- \`QJDnsRemoteTransport::configureTcp(server, port, QNetworkProxy)\` uses an
+- `QJDns::setTransport(QJDnsTransport *)` transfers ownership to QJDns **before**
+  calling `init()`; the default path is unchanged when no transport is injected.
+- `QJDnsRemoteTransport::configureTcp(server, port, QNetworkProxy)` uses an
   explicit QTcpSocket proxy configuration. Passing NoProxy is an *explicit*
   choice by the caller, never a fallback.
-- \`QJDnsRemoteTransport::configureDoh(endpoint, QNetworkAccessManager *)\`
+- `QJDnsRemoteTransport::configureDoh(endpoint, QNetworkAccessManager *)`
   injects the entire HTTP transport. The manager is **not owned** by JDNS.
   The caller sets its proxy (SOCKS5 or HTTP CONNECT), authentication,
   HTTPS TLS trust and policy. JDNS never creates its own HTTP manager.
@@ -61,14 +61,14 @@ No TCP or HTTP stack belongs in the JDNS C parser.
 4. For the Local choice, keep existing JDNS system resolver. For DoH and TCP,
    do not use local DNS as an implicit fallback. Keep profile persistence and
    DNS test UI from psi#1036.
-5. Test with \`ssh -D 1337 -N psi\` and \`spectrum.im\`: SRV should yield
-   \`chat.spectrum.im:5222\`, then SOCKS5 CONNECT by hostname; the local
+5. Test with `ssh -D 1337 -N psi` and `spectrum.im`: SRV should yield
+   `chat.spectrum.im:5222`, then SOCKS5 CONNECT by hostname; the local
    machine should not issue SRV DNS requests in remote mode.
 
 ## Tests to retain
 
 - DNS-over-TCP length-prefixed framing, including split frames.
-- DoH POST with RFC 8484 \`application/dns-message\` body/header.
+- DoH POST with RFC 8484 `application/dns-message` body/header.
 - Invalid DNS IDs, truncated answers, oversized frames, TCP close and timeout.
 - DoH HTTP failures, redirects and TLS errors propagate as DNS errors; no
   implicit network fallback.
