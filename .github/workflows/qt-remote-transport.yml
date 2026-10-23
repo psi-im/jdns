@@ -22,6 +22,7 @@ jobs:
         run: >
           cmake -S . -B build -G Ninja
           -D BUILD_QJDNS=ON
+          -D JDNS_BUILD_TESTS=ON
           -D BUILD_JDNS_TOOL=OFF
           -D JDNS_QT_MAJOR_VERSION=${{ matrix.qt }}
           -D JDNS_ENABLE_INSTALL=OFF
