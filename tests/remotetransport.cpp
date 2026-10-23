@@ -3,15 +3,13 @@
  * Copyright (C) 2026 Psi contributors
  * SPDX-License-Identifier: MIT
  */
-#include <jdns/qjdns.h>
-#include <jdns/qjdns_remotetransport.h>
+#include <qjdns.h>
+#include <qjdns_remotetransport.h>
 
-#include <QBuffer>
 #include <QCoreApplication>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QSignalSpy>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -162,7 +160,6 @@ private slots:
                 ++requests;
                 client->write(framed.left(3)); // exercise fragmented TCP framing
                 QTimer::singleShot(10, client, [client, framed]() { client->write(framed.mid(3)); });
-                client->disconnect(client);
             });
             connect(client, &QObject::destroyed, &server, [received]() { delete received; });
         });
