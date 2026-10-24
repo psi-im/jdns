@@ -986,6 +986,8 @@ void published_item_delete(published_item_t *a)
 struct jdns_session
 {
     jdns_callbacks_t cb;
+    jdns_datagram_callbacks_t datagram;
+    jdns_async_callbacks_t async;
     int mode;
     int async_unicast;
     int shutdown;
@@ -1051,15 +1053,15 @@ void jdns_session_delete(jdns_session_t *s)
     if(!s)
         return;
     if(s->handle)
-        s->cb.transport_unbind(s, s->cb.app, s->handle);
-    if(s->async_unicast && s->cb.async_cancel)
+        s->datagram.transport_unbind(s, s->cb.app, s->handle);
+    if(s->async_unicast && s->async.cancel)
     {
         int i;
         for(i = 0; i < s->queries->count; ++i)
         {
             query_t *q = (query_t *)s->queries->item[i];
             if(q->async_inflight)
-                s->cb.async_cancel(s, s->cb.app, q->id);
+                s->async.cancel(s, s->cb.app, q->id);
         }
     }
     list_delete(s->name_servers);
@@ -1270,11 +1272,16 @@ static int get_next_name_server_id(jdns_session_t *s)
     return id;
 }
 
-int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
+int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                      const jdns_address_t *addr, int port)
 {
     int ret;
+    if(!callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+       !callbacks->transport_read || !callbacks->transport_write)
+        return 0;
+    s->datagram = *callbacks;
     s->mode = 0;
-    ret = s->cb.transport_bind(s, s->cb.app, addr, port, 0);
+    ret = s->datagram.transport_bind(s, s->cb.app, addr, port, 0);
     if(ret <= 0)
         return 0;
     s->handle = ret;
@@ -1282,20 +1289,26 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
     return 1;
 }
 
-int jdns_init_async_unicast(jdns_session_t *s)
+int jdns_init_async_unicast(jdns_session_t *s, const jdns_async_callbacks_t *callbacks)
 {
-    if(!s || !s->cb.async_send || !s->cb.async_cancel || s->handle)
+    if(!s || !callbacks || !callbacks->send || !callbacks->cancel || s->handle)
         return 0;
+    s->async = *callbacks;
     s->mode = 0;
     s->async_unicast = 1;
     return 1;
 }
 
-int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
+int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                        const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     int ret;
+    if(!callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+       !callbacks->transport_read || !callbacks->transport_write)
+        return 0;
+    s->datagram = *callbacks;
     s->mode = 1;
-    ret = s->cb.transport_bind(s, s->cb.app, addr, port, maddr);
+    ret = s->datagram.transport_bind(s, s->cb.app, addr, port, maddr);
     if(ret <= 0)
         return 0;
     s->handle = ret;
@@ -1855,7 +1868,7 @@ void _unicast_cancel(jdns_session_t *s, query_t *q)
         if(q->async_inflight)
         {
             q->async_inflight = 0;
-            s->cb.async_cancel(s, s->cb.app, q->id);
+            s->async.cancel(s, s->cb.app, q->id);
         }
         _remove_query_datagrams(s, q);
         list_remove(s->queries, q);
@@ -1912,7 +1925,7 @@ static int _dispatch_async_query(jdns_session_t *s, query_t *q)
     if(!packet)
         return 0;
     q->async_inflight = 1;
-    s->cb.async_send(s, s->cb.app, q->id, packet->raw_data, packet->raw_size);
+    s->async.send(s, s->cb.app, q->id, packet->raw_data, packet->raw_size);
     jdns_packet_delete(packet);
     return 1;
 }
@@ -2340,7 +2353,7 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             _debug_line(s, "SEND managed (size=%d)", a->size);
         _print_hexdump(s, a->data, a->size);
 
-        ret = s->cb.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
+        ret = s->datagram.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
         if(ret == 0)
         {
             s->handle_writable = 0;
@@ -2448,7 +2461,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
         name_server_t *ns;
 
         addr = jdns_address_new();
-        ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
+        ret = s->datagram.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
 
         // no packet?
         if(ret == 0)
@@ -3556,7 +3569,7 @@ int jdns_step_multicast(jdns_session_t *s, int now)
         _debug_line(s, "SEND %s:%d (size=%d)", addr->c_str, port, buf_len);
         _print_hexdump(s, buf, buf_len);
 
-        ret = s->cb.transport_write(s, s->cb.app, s->handle, addr, port, buf, buf_len);
+        ret = s->datagram.transport_write(s, s->cb.app, s->handle, addr, port, buf, buf_len);
 
         jdns_address_delete(addr);
         jdns_packet_delete(packet);
@@ -3595,7 +3608,7 @@ int jdns_step_multicast(jdns_session_t *s, int now)
             jdns_response_t *r;
 
             addr = jdns_address_new();
-            ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
+            ret = s->datagram.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
 
             // no packet?
             if(ret == 0)
