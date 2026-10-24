@@ -19,12 +19,12 @@ public:
     QJDnsExternalTransport *core = nullptr;
     QUrl endpoint;
     QPointer<QNetworkAccessManager> manager;
-    QHash<quint64, QPointer<QNetworkReply>> replies;
+    QHash<int, QPointer<QNetworkReply>> replies;
 };
 
 QJDnsDohTransport::QJDnsDohTransport(const QUrl &endpoint,
                                      QNetworkAccessManager *manager, QObject *parent)
-    : QJDnsTransport(parent), d(new Private)
+    : QJDnsQueryTransport(parent), d(new Private)
 {
     d->endpoint = endpoint;
     // QNAM remains caller-owned when supplied. Otherwise QObject parenting
@@ -32,19 +32,19 @@ QJDnsDohTransport::QJDnsDohTransport(const QUrl &endpoint,
     d->manager = manager ? manager : new QNetworkAccessManager(this);
     d->core = new QJDnsExternalTransport(this);
     connect(d->core, &QJDnsExternalTransport::queryRequested, this,
-            [this](quint64 id, const QByteArray &packet) { submitDns(id, packet); });
+            [this](int id, const QByteArray &packet) { submitDns(id, packet); });
     connect(d->core, &QJDnsExternalTransport::requestCancelled, this,
-            [this](quint64 id) { cancelDns(id); });
-    connect(d->core, &QJDnsTransport::packetWritten, this, &QJDnsTransport::packetWritten);
-    connect(d->core, &QJDnsTransport::readyRead, this, &QJDnsTransport::readyRead);
-    connect(d->core, &QJDnsTransport::debugLine, this, &QJDnsTransport::debugLine);
+            [this](int id) { cancelDns(id); });
+    connect(d->core, &QJDnsQueryTransport::responseReady, this, &QJDnsQueryTransport::responseReady);
+    connect(d->core, &QJDnsQueryTransport::failed, this, &QJDnsQueryTransport::failed);
+    connect(d->core, &QJDnsQueryTransport::debugLine, this, &QJDnsQueryTransport::debugLine);
 }
 
 QJDnsDohTransport::~QJDnsDohTransport()
 {
     d->core->disconnect(this);
     const auto ids = d->replies.keys();
-    for(quint64 id : ids)
+    for(int id : ids)
         cancelDns(id);
     delete d;
 }
@@ -59,28 +59,17 @@ void QJDnsDohTransport::setTimeout(int milliseconds)
     d->core->setTimeout(milliseconds);
 }
 
-int QJDnsDohTransport::open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress)
+void QJDnsDohTransport::startRequest(int id, const QByteArray &packet)
 {
-    return d->core->open(address, port, multicastAddress);
+    d->core->startRequest(id, packet);
 }
 
-void QJDnsDohTransport::close(int handle)
+void QJDnsDohTransport::cancelRequest(int id)
 {
-    d->core->close(handle);
+    d->core->cancelRequest(id);
 }
 
-QJDnsTransport::SubmitResult QJDnsDohTransport::submit(int handle, const QHostAddress &destination,
-                                                        quint16 port, const QByteArray &packet)
-{
-    return d->core->submit(handle, destination, port, packet);
-}
-
-bool QJDnsDohTransport::takeResponse(int handle, Packet *packet)
-{
-    return d->core->takeResponse(handle, packet);
-}
-
-void QJDnsDohTransport::cancelDns(quint64 id)
+void QJDnsDohTransport::cancelDns(int id)
 {
     auto reply = d->replies.take(id);
     if(reply) {
@@ -90,7 +79,7 @@ void QJDnsDohTransport::cancelDns(quint64 id)
     }
 }
 
-void QJDnsDohTransport::finishDns(quint64 id, const QByteArray &response, const QString &error)
+void QJDnsDohTransport::finishDns(int id, const QByteArray &response, const QString &error)
 {
     if(!d->replies.contains(id))
         return;
@@ -101,7 +90,7 @@ void QJDnsDohTransport::finishDns(quint64 id, const QByteArray &response, const 
         d->core->completeRequest(id, response);
 }
 
-void QJDnsDohTransport::submitDns(quint64 id, const QByteArray &packet)
+void QJDnsDohTransport::submitDns(int id, const QByteArray &packet)
 {
     if(!d->manager || !d->endpoint.isValid()
        || d->endpoint.scheme() != QLatin1String("https")
