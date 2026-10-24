@@ -55,13 +55,31 @@ public:
      */
     QJDnsHttpTransport(const QUrl &endpoint, QNetworkAccessManager *manager = nullptr,
                       QObject *parent = nullptr);
+    /**
+     * @brief Cancel active HTTP requests and dispose of owned resources.
+     * @note A caller-supplied QNetworkAccessManager is never deleted by
+     * this transport. An internally created QNetworkAccessManager is owned
+     * by the transport and released with it.
+     */
     ~QJDnsHttpTransport() override;
 
-    /** @brief Return configured QNAM without transferring ownership. */
-    QNetworkAccessManager *networkAccessManager() const;
     /**
-     * @brief Configure per-query timeout, in milliseconds.
-     * @note Ignored for nonpositive values; default 12000 ms.
+     * @brief Access the configured Qt HTTP backend.
+     * @return Caller-supplied QNetworkAccessManager, or the manager created
+     * and owned by this transport; nullptr if an external manager was
+     * destroyed before this call.
+     * @note This accessor never transfers ownership. Set proxy and TLS
+     * policy before starting any query. An external manager must remain
+     * alive while requests are in progress.
+     */
+    QNetworkAccessManager *networkAccessManager() const;
+
+    /**
+     * @brief Configure per-query maximum lifetime for future requests.
+     * @param milliseconds Positive timeout in milliseconds (default 12000).
+     * Zero and negative values are ignored.
+     * @note An expired HTTPS request is cancelled and a typed Timeout is
+     * reported to JDNS. Neither HTTP redirect nor DNS fallback is attempted.
      */
     void setTimeout(int milliseconds);
 
