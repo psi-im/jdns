@@ -42,10 +42,11 @@ public:
      * manager remains caller-owned and must outlive all pending requests.
      * @param parent Optional QObject parent, superseded by successful
      * QJDns::setTransport() ownership transfer.
-     * @warning A default-created manager uses Qt's normal proxy configuration:
-     * it does NOT inherit an XMPP account's SOCKS5 proxy automatically.
-     * Configure networkAccessManager() before starting queries or inject an
-     * explicitly configured manager when DNS must not leave the proxy.
+     * @warning A default-created manager uses Qt's normal proxy configuration.
+     * It does not inherit any application-specific proxy settings. To force
+     * DoH through a particular proxy, configure networkAccessManager() before
+     * starting queries or pass a preconfigured manager. Without an explicit
+     * proxy, resolving the DoH endpoint itself may use the system resolver.
      * @note No automatic UDP, local DNS or alternate DoH fallback is attempted
      * on HTTP, TLS or DNS errors.
      */
