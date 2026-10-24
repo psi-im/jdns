@@ -64,7 +64,8 @@ void QJDnsExternalTransport::retire(quint64 requestId, bool notifyCancellation)
     if(!request)
         return;
     request->timer->stop();
-    delete request->timer;
+    // retire() can run inside the timer's own timeout signal.
+    request->timer->deleteLater();
     delete request;
 
     // Remove the transaction before emitting cancellation, so a completion
