@@ -690,6 +690,7 @@ typedef struct query
 
     // packet id
     int dns_id;
+    int async_inflight; /* native async transport currently owns this query */
 
     // what we are looking up
     unsigned char *qname;
@@ -751,6 +752,7 @@ query_t *query_new()
     q->servers_failed_count = 0;
     q->servers_failed = 0;
     q->nxdomain = 0;
+    q->async_inflight = 0;
     q->cname_chain_count = 0;
     q->cname_parent = 0;
     q->cname_child = 0;
@@ -986,6 +988,7 @@ struct jdns_session
     jdns_callbacks_t cb;
     int mode;
     int managed_unicast;
+    int async_unicast;
     int shutdown;
     int next_qid;
     int next_req_id;
@@ -1017,6 +1020,7 @@ jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
     jdns_session_t *s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
     s->managed_unicast = 0;
+    s->async_unicast = 0;
     s->shutdown = 0;
     s->next_qid = 0;
     s->next_req_id = 1;
@@ -1050,6 +1054,16 @@ void jdns_session_delete(jdns_session_t *s)
         return;
     if(s->handle)
         s->cb.transport_unbind(s, s->cb.app, s->handle);
+    if(s->async_unicast && s->cb.async_cancel)
+    {
+        int i;
+        for(i = 0; i < s->queries->count; ++i)
+        {
+            query_t *q = (query_t *)s->queries->item[i];
+            if(q->async_inflight)
+                s->cb.async_cancel(s, s->cb.app, q->id);
+        }
+    }
     list_delete(s->name_servers);
     list_delete(s->queries);
     list_delete(s->outgoing);
@@ -1267,6 +1281,16 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
         return 0;
     s->handle = ret;
     s->port = port;
+    return 1;
+}
+
+int jdns_init_async_unicast(jdns_session_t *s)
+{
+    if(!s || !s->cb.async_send || !s->cb.async_cancel || s->handle)
+        return 0;
+    s->mode = 0;
+    s->managed_unicast = 1;
+    s->async_unicast = 1;
     return 1;
 }
 
@@ -1742,6 +1766,19 @@ int _unicast_query(jdns_session_t *s, const unsigned char *name, int qtype)
 
 void _unicast_cancel(jdns_session_t *s, query_t *q)
 {
+    /* An asynchronous transport is a request, not a datagram to leave
+       running for one minute to opportunistically warm the cache. */
+    if(s->async_unicast)
+    {
+        if(q->async_inflight)
+        {
+            q->async_inflight = 0;
+            s->cb.async_cancel(s, s->cb.app, q->id);
+        }
+        _remove_query_datagrams(s, q);
+        list_remove(s->queries, q);
+        return;
+    }
     // didn't even do a step yet?  just remove it
     if(q->step == 0)
     {
@@ -1849,7 +1886,8 @@ int jdns_step_unicast(jdns_session_t *s, int now)
     }
 
     need_write = _unicast_do_writes(s, now);
-    need_read = _unicast_do_reads(s, now);
+    if(!s->async_unicast)
+        need_read = _unicast_do_reads(s, now);
 
     // calculate next timer (based on queries and cache)
     for(n = 0; n < s->queries->count; ++n)
@@ -2213,6 +2251,23 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             _debug_line(s, "SEND managed (size=%d)", a->size);
         _print_hexdump(s, a->data, a->size);
 
+        if(s->async_unicast)
+        {
+            /* Existing packet queue carries only the wire payload; native
+               async submissions have no socket, endpoint or fake handle. */
+            query_t *owner = a->query;
+            if(!owner || owner->async_inflight)
+            {
+                list_remove(s->outgoing, a);
+                --n;
+                continue;
+            }
+            owner->async_inflight = 1;
+            s->cb.async_send(s, s->cb.app, owner->id, a->data, a->size);
+            list_remove(s->outgoing, a);
+            --n;
+            continue;
+        }
         ret = s->cb.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
         if(ret == 0)
         {
