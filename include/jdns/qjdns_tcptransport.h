@@ -6,7 +6,7 @@
 #ifndef QJDNS_TCPTRANSPORT_H
 #define QJDNS_TCPTRANSPORT_H
 
-#include "qjdns_externaltransport.h"
+#include "qjdns_transport.h"
 #include <QNetworkProxy>
 
 /**
@@ -16,15 +16,24 @@
  * protocol, not its network location. Pass QNetworkProxy::NoProxy explicitly
  * for direct TCP. A SOCKS5 proxy receives the DNS server hostname in CONNECT.
  *
- * Uses QJDnsExternalTransport for request IDs, cancellation, timeouts and
- * returning unframed DNS packets to JDNS. No UDP or system-DNS fallback.
+ * Composes an internal QJDnsExternalTransport for request IDs, cancellation,
+ * timeouts and returning unframed DNS packets to JDNS. The external backend
+ * completion methods are NOT exposed in the TCP transport's public API. No UDP or system-DNS fallback.
  */
-class JDNS_EXPORT QJDnsTcpTransport : public QJDnsExternalTransport
+class JDNS_EXPORT QJDnsTcpTransport : public QJDnsTransport
 {
 public:
     QJDnsTcpTransport(const QString &server, quint16 port,
                       const QNetworkProxy &proxy, QObject *parent = nullptr);
     ~QJDnsTcpTransport() override;
+
+    void setTimeout(int milliseconds);
+    Capabilities capabilities() const override { return ManagedUnicast; }
+    int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) override;
+    void close(int handle) override;
+    SubmitResult submit(int handle, const QHostAddress &destination, quint16 port,
+                        const QByteArray &packet) override;
+    bool takeResponse(int handle, Packet *packet) override;
 
 private:
     class Private;
