@@ -308,29 +308,110 @@ typedef struct jdns_session jdns_session_t;
 
 /**
  * @brief Resolver-wide clock, entropy and diagnostics.
- * These are the only callbacks shared by async unicast and real datagrams.
+ *
+ * These callbacks are common to native asynchronous unicast DNS and real
+ * datagram I/O. Their @c app argument is the pointer supplied below.
+ * Transport-specific callbacks are configured separately when initializing
+ * a datagram or asynchronous unicast session.
  */
 typedef struct jdns_callbacks
 {
+    /** @brief User-supplied context forwarded unchanged to every callback. */
     void *app;
+
+    /**
+     * @brief Obtain the current resolver monotonic clock.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @return Milliseconds since session start.
+     * @note Use a monotonic source; wall-clock adjustments can break timers.
+     */
     int (*time_now)(jdns_session_t *s, void *app);
+
+    /**
+     * @brief Obtain pseudorandomness for DNS IDs and retry scheduling.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @return Random integer in the range 0..65535.
+     */
     int (*rand_int)(jdns_session_t *s, void *app);
+
+    /**
+     * @brief Receive one diagnostic line from the DNS engine.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @param line One diagnostic line. Treat its pointer as borrowed.
+     */
     void (*debug_line)(jdns_session_t *s, void *app, const char *line);
 } jdns_callbacks_t;
 
 /**
- * @brief Real datagram socket callbacks (UDP unicast and mDNS only).
- * Not applicable to asynchronous request/response transports.
+ * @brief Socket-oriented datagram callbacks for UDP unicast and mDNS.
+ *
+ * In multicast mode, the bound socket needs to coexist with other mDNS
+ * implementations (SO_REUSEPORT, where available), join the multicast group
+ * (IP_ADD_MEMBERSHIP or IPv6 equivalent) and use a multicast TTL/hop limit of
+ * 255. These requirements are transport responsibilities.
+ *
+ * Callbacks use the common jdns_callbacks_t::app context; the resolver
+ * retains the transport handle returned by transport_bind() until unbind.
+ * Do not use these callbacks with native asynchronous query transports.
  */
 typedef struct jdns_datagram_callbacks
 {
+    /**
+     * @brief Bind a UDP socket/interface on behalf of JDNS.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @param address Local interface/bind address; NULL means all interfaces.
+     * @param port Local UDP port; zero requests an ephemeral port.
+     * @param multicast_address Multicast group to join, or NULL for unicast.
+     * @return Positive transport handle on success, zero on failure.
+     * @note For mDNS, enable socket reuse, join the multicast group and set
+     * the multicast TTL/hop limit to 255 before delivering datagrams.
+     */
     int (*transport_bind)(jdns_session_t *s, void *app,
         const jdns_address_t *address, int port,
         const jdns_address_t *multicast_address);
+
+    /**
+     * @brief Close a previously bound UDP transport handle.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @param handle Positive handle returned by transport_bind().
+     */
     void (*transport_unbind)(jdns_session_t *s, void *app, int handle);
+
+    /**
+     * @brief Receive a UDP packet with its source address and port.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @param handle Positive handle returned by transport_bind().
+     * @param sender Output for the sender's IP address.
+     * @param sender_port Output for the sender's UDP port.
+     * @param buffer Output buffer for the unframed DNS wire packet.
+     * @param buffer_size In: available buffer capacity; out: bytes received.
+     * @return 1 if a packet was read; 0 if none is available.
+     * @note On a successful read, set both sender outputs and buffer_size.
+     */
     int (*transport_read)(jdns_session_t *s, void *app, int handle,
         jdns_address_t *sender, int *sender_port, unsigned char *buffer,
         int *buffer_size);
+
+    /**
+     * @brief Submit a UDP DNS packet to its destination endpoint.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
+     * @param handle Positive handle returned by transport_bind().
+     * @param recipient IP address to which the DNS packet is sent.
+     * @param recipient_port UDP destination port.
+     * @param packet Complete unframed DNS wire packet.
+     * @param packet_size Packet size in bytes.
+     * @return 1 if the packet was accepted for writing, 0 if writing
+     * should be retried later.
+     * @note In asynchronous implementations the caller must notify JDNS
+     * when a submitted packet has been written.
+     */
     int (*transport_write)(jdns_session_t *s, void *app, int handle,
         const jdns_address_t *recipient, int recipient_port,
         unsigned char *packet, int packet_size);
