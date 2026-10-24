@@ -12,7 +12,12 @@
 class QNetworkAccessManager;
 
 /**
- * RFC 8484 DNS-over-HTTPS using Qt Network.
+ * @brief DNS wire transport over HTTPS using Qt Network (RFC 8484).
+ *
+ * Despite the HTTP-oriented class name, **only HTTPS URLs are accepted**.
+ * Plaintext HTTP is rejected before any network request is submitted.
+ * This transport sends application/dns-message POST requests and requires
+ * HTTP 200 and the matching response media type. No redirects are followed.
  *
  * If manager is null, a QNetworkAccessManager is created and owned by this
  * transport. Otherwise, the provided manager remains caller-owned and must
@@ -33,10 +38,20 @@ class JDNS_EXPORT QJDnsHttpTransport : public QJDnsQueryTransport
 {
 public:
     /**
-     * @brief Create a HTTP resolver transport with a fixed endpoint.
-     * @note All I/O uses the configured endpoint and network policy. The
-     * transport is asynchronous, does not perform local DNS fallback and
-     * must be handed to QJDns::setQueryTransport() before init().
+     * @brief Create a DNS-over-HTTPS resolver transport with a fixed endpoint.
+     * @param endpoint HTTPS URL for an RFC 8484 DNS resolver. An invalid URL
+     * or any non-HTTPS scheme fails the query without making an HTTP request.
+     * @param manager Optional QNetworkAccessManager. When omitted, a manager
+     * is created and owned by this transport; when provided, ownership stays
+     * with the caller, who must keep it alive during outstanding requests.
+     * @param parent Optional QObject parent. QJDns assumes ownership of a
+     * successfully injected transport.
+     * @warning An internally created manager follows Qt's normal network
+     * configuration; it does not automatically inherit caller-specific proxy
+     * policy. Configure networkAccessManager() before querying when routing
+     * through a particular proxy is required.
+     * @note This transport is asynchronous and has no local DNS fallback.
+     * Pass it to QJDns::setQueryTransport() before init().
      */
     QJDnsHttpTransport(const QUrl &endpoint, QNetworkAccessManager *manager = nullptr,
                       QObject *parent = nullptr);
