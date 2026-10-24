@@ -111,13 +111,11 @@ static jdns_string_t *_make_printable_str(const jdns_string_t *str)
     return _make_printable(str->data, str->size);
 }
 
-static jdns_string_t *_make_printable_cstr(const char *str)
-{
+jdns_string_t *_make_printable_cstr(const char *str){
     return _make_printable((const unsigned char *)str, strlen(str));
 }
 
-static unsigned char *_fix_input(const unsigned char *in)
-{
+unsigned char *_fix_input(const unsigned char *in){
     unsigned char *out;
     int len;
 
@@ -145,8 +143,7 @@ static unsigned char *_fix_input(const unsigned char *in)
     return out;
 }
 
-static const char *_qtype2str(int qtype)
-{
+const char *_qtype2str(int qtype){
     const char *str;
     switch(qtype)
     {
@@ -174,8 +171,7 @@ static int _cmp_rdata(const jdns_rr_t *a, const jdns_rr_t *b)
     return 1;
 }
 
-static int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b)
-{
+int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b){
     if(a->type != b->type)
         return 0;
     if(!jdns_domain_cmp(a->owner, b->owner))
@@ -228,8 +224,7 @@ static int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b)
     return 1;
 }
 
-static jdns_response_t *_packet2response(const jdns_packet_t *packet, const unsigned char *qname, int qtype, int classmask)
-{
+jdns_response_t *_packet2response(const jdns_packet_t *packet, const unsigned char *qname, int qtype, int classmask){
     int n;
     jdns_response_t *r;
 
@@ -313,8 +308,7 @@ static void _print_hexdump_line(jdns_session_t *s, const unsigned char *buf, int
     _debug_line(s, "  %s", line);
 }
 
-static void _print_hexdump(jdns_session_t *s, const unsigned char *buf, int size)
-{
+void _print_hexdump(jdns_session_t *s, const unsigned char *buf, int size){
     int n;
     int lines;
     int len;
@@ -347,8 +341,7 @@ static void _print_packet_resources(jdns_session_t *s, const jdns_list_t *reslis
     }
 }
 
-static void _print_packet(jdns_session_t *s, const jdns_packet_t *packet)
-{
+void _print_packet(jdns_session_t *s, const jdns_packet_t *packet){
     _debug_line(s, "Packet:");
     _debug_line(s, "  id:   %d", packet->id);
     _debug_line(s, "  opts: qr:%d, opcode:%d, aa:%d, tc:%d, rd:%d, ra:%d, z:%d, ad:%d, cd:%d, rcode:%d",
@@ -490,8 +483,7 @@ static void _print_rr(jdns_session_t *s, const jdns_rr_t *rr, const unsigned cha
     jdns_string_delete(ownerstr);
 }
 
-static void _print_records(jdns_session_t *s, const jdns_response_t *r, const unsigned char *owner)
-{
+void _print_records(jdns_session_t *s, const jdns_response_t *r, const unsigned char *owner){
     int n;
     _debug_line(s, "Records:");
     _debug_line(s, "  Answer Records: %d", r->answerCount);
@@ -555,8 +547,7 @@ static void list_delete(list_t *l)
     jdns_free(l);
 }
 
-static void list_insert(list_t *l, void *item, int pos)
-{
+void list_insert(list_t *l, void *item, int pos){
     list_item_t *i = (list_item_t *)item;
     if(!l->item)
         l->item = (list_item_t **)malloc(sizeof(list_item_t *));
@@ -570,8 +561,7 @@ static void list_insert(list_t *l, void *item, int pos)
     ++l->count;
 }
 
-static void list_remove(list_t *l, void *item)
-{
+void list_remove(list_t *l, void *item){
     int n;
     list_item_t *i = (list_item_t *)item;
     int pos = -1;
@@ -1045,8 +1035,7 @@ static int _int_wrap(int *src, int start)
 }
 
 // starts at 0
-static int get_next_qid(jdns_session_t *s)
-{
+int get_next_qid(jdns_session_t *s){
     int n, id;
     id = -1;
     while(id == -1)
@@ -1065,8 +1054,7 @@ static int get_next_qid(jdns_session_t *s)
 }
 
 // starts at 1
-static int get_next_req_id(jdns_session_t *s)
-{
+int get_next_req_id(jdns_session_t *s){
     int n, k, id;
     id = -1;
     while(id == -1)
