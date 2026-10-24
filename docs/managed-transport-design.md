@@ -29,7 +29,7 @@ local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
   transport creates and **owns** its own QNAM (via QObject parenting).
   When a manager is provided, the caller retains ownership and must keep it
   alive for all pending queries. A default-created QNAM uses Qt's normal
-  network and proxy settings, not an implicit copy of an XMPP proxy profile.
+  network and proxy settings, not application-specific proxy configuration.
   Applications requiring a particular SOCKS5/HTTP proxy must configure the
   QNAM explicitly, either by supplying a preconfigured manager or via
   `transport->networkAccessManager()->setProxy(proxy)` before querying.
