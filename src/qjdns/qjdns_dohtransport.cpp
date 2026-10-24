@@ -1,5 +1,5 @@
 /*
- * qjdns_dohtransport.cpp - RFC 8484 DNS-over-HTTPS using external QNAM
+ * qjdns_dohtransport.cpp - RFC 8484 DNS-over-HTTPS using Qt Network
  * Copyright (C) 2026 Psi contributors
  * Licensed under the MIT license (see COPYING).
  */
@@ -27,7 +27,9 @@ QJDnsDohTransport::QJDnsDohTransport(const QUrl &endpoint,
     : QJDnsTransport(parent), d(new Private)
 {
     d->endpoint = endpoint;
-    d->manager = manager;
+    // QNAM remains caller-owned when supplied. Otherwise QObject parenting
+    // gives the transport full ownership of its private network manager.
+    d->manager = manager ? manager : new QNetworkAccessManager(this);
     d->core = new QJDnsExternalTransport(this);
     connect(d->core, &QJDnsExternalTransport::queryRequested, this,
             [this](quint64 id, const QByteArray &packet) { submitDns(id, packet); });
@@ -100,7 +102,7 @@ void QJDnsDohTransport::submitDns(quint64 id, const QByteArray &packet)
        || d->endpoint.scheme() != QLatin1String("https")
        || d->endpoint.host().isEmpty() || !d->endpoint.userInfo().isEmpty()
        || !d->endpoint.fragment().isEmpty()) {
-        d->core->failRequest(id, QStringLiteral("DoH requires an HTTPS endpoint and a caller-supplied network manager"));
+        d->core->failRequest(id, QStringLiteral("DoH requires an HTTPS endpoint and a valid network manager"));
         return;
     }
     if(packet.size() < 12 || packet.size() > QJDnsWire::MaxMessageSize) {
