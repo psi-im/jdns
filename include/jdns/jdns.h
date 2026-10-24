@@ -41,10 +41,12 @@ typedef void *(*jdns_object_cctor_func)(const void *);
     jdns_object_dtor_func dtor; \
     jdns_object_cctor_func cctor;
 
+/* Each generic vtable slot must hold a function with the exact prototype.
+ * Casting a typed copy/destructor function pointer and invoking it through
+ * an incompatible type is undefined behavior (and caught by UBSan). */
 #define JDNS_OBJECT_NEW(name) \
     (name##_t *)jdns_object_new(sizeof(name##_t), \
-        (jdns_object_dtor_func)name##_delete, \
-        (jdns_object_cctor_func)name##_copy);
+        name##_delete_generic, name##_copy_generic);
 
 typedef struct jdns_object
 {
