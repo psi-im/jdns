@@ -4,6 +4,7 @@ set(qjdns_MOC_HDRS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
     "${JDNS_INCLUDEDIR}/qjdns_transport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_querytransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
     qjdns_p.h
     qjdnsshared_p.h
