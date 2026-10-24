@@ -107,7 +107,7 @@ public:
     ~Private();
     void cleanup();
     bool init(QJDns::Mode _mode, const QHostAddress &address);
-    void setNameServers(const QList<NameServer> &nslist);
+    bool setNameServers(const QList<NameServer> &nslist);
     void process();
     void processDebug();
     void doNextStep();
