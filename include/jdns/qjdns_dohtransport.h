@@ -6,7 +6,7 @@
 #ifndef QJDNS_DOHTRANSPORT_H
 #define QJDNS_DOHTRANSPORT_H
 
-#include "qjdns_externaltransport.h"
+#include "qjdns_transport.h"
 #include <QUrl>
 
 class QNetworkAccessManager;
@@ -18,16 +18,25 @@ class QNetworkAccessManager;
  * policy before starting any queries and keep it alive while DNS is active.
  * No hidden QNAM is created. HTTP redirects are not followed.
  *
- * Uses QJDnsExternalTransport for DNS transaction bookkeeping and timeout.
+ * Composes an internal QJDnsExternalTransport for DNS transaction bookkeeping
+ * and timeout without exposing its backend completion methods to callers.
  * For a non-QNAM HTTP/TLS stack (including QCA), use QJDnsExternalTransport
  * directly and perform HTTP requests in the caller.
  */
-class JDNS_EXPORT QJDnsDohTransport : public QJDnsExternalTransport
+class JDNS_EXPORT QJDnsDohTransport : public QJDnsTransport
 {
 public:
     QJDnsDohTransport(const QUrl &endpoint, QNetworkAccessManager *manager,
                       QObject *parent = nullptr);
     ~QJDnsDohTransport() override;
+
+    void setTimeout(int milliseconds);
+    Capabilities capabilities() const override { return ManagedUnicast; }
+    int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) override;
+    void close(int handle) override;
+    SubmitResult submit(int handle, const QHostAddress &destination, quint16 port,
+                        const QByteArray &packet) override;
+    bool takeResponse(int handle, Packet *packet) override;
 
 private:
     class Private;
