@@ -20,6 +20,7 @@ endif()
 # controlled independently by the standard CMAKE_POSITION_INDEPENDENT_CODE.
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_QJDNS "Build the JDNS Qt wrapper" ON)
+option(JDNS_BUILD_TESTS "Build QJDns transport tests" OFF)
 option(JDNS_ENABLE_INSTALL "Generate JDNS installation rules" ON)
 
 if(ANDROID)
@@ -135,6 +136,11 @@ if(JDNS_ENABLE_INSTALL AND NOT WIN32)
 endif()
 
 add_subdirectory(src)
+
+if(JDNS_BUILD_TESTS AND BUILD_QJDNS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 if(BUILD_JDNS_TOOL)
     add_subdirectory(tools/jdns)

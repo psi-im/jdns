@@ -24,12 +24,14 @@
 #ifndef QJDNS_TRANSPORT_H
 #define QJDNS_TRANSPORT_H
 
+#include "jdns_export.h"
+
 #include <QByteArray>
 #include <QFlags>
 #include <QHostAddress>
 #include <QObject>
 
-class QJDnsTransport : public QObject
+class JDNS_EXPORT QJDnsTransport : public QObject
 {
     Q_OBJECT
 public:
@@ -54,6 +56,11 @@ public:
     explicit QJDnsTransport(QObject *parent = nullptr) : QObject(parent) {}
     ~QJDnsTransport() override = default;
 
+    // ManagedUnicast transports receive complete DNS query packets and own
+    // delivery, retries and failure reporting. Multicast cannot use them.
+    // After returning Submitted, the transport must eventually emit
+    // packetWritten() and supply a DNS response (including an error response)
+    // through readyRead(), unless the handle is closed.
     virtual Capabilities capabilities() const { return {}; }
     virtual int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) = 0;
     virtual void close(int handle) = 0;

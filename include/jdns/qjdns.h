@@ -34,6 +34,8 @@
 #include <QtCore>
 #include <QtNetwork>
 
+class QJDnsTransport;
+
 class JDNS_EXPORT QJDns : public QObject
 {
     Q_OBJECT
@@ -130,6 +132,9 @@ public:
     QJDns(QObject *parent = 0);
     ~QJDns();
 
+    // Transfer ownership of a custom transport before init(). The existing
+    // UDP implementation remains the default. Returns false if initialized.
+    bool setTransport(QJDnsTransport *transport);
     bool init(Mode mode, const QHostAddress &address);
     void shutdown();
     QStringList debugLines();

@@ -365,7 +365,14 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 {
     mode = _mode;
 
-    transport = qjdns_create_transport(this, mode == Unicast);
+    if(!transport)
+        transport = qjdns_create_transport(this, mode == Unicast);
+    if(mode == Multicast && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+    {
+        delete transport;
+        transport = nullptr;
+        return false;
+    }
     connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
     connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
     connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
@@ -776,6 +783,15 @@ QJDns::QJDns(QObject *parent)
 QJDns::~QJDns()
 {
     delete d;
+}
+
+bool QJDns::setTransport(QJDnsTransport *transport)
+{
+    if(d->sess || d->transport || !transport)
+        return false;
+    transport->setParent(d);
+    d->transport = transport;
+    return true;
 }
 
 bool QJDns::init(Mode mode, const QHostAddress &address)
