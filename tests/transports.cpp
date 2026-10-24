@@ -373,7 +373,7 @@ private slots:
 
     void httpCreatesAndOwnsDefaultManager()
     {
-        // Omitting QNAM must create one, parented to the DoH transport.
+        // Omitting QNAM must create one, parented to the HTTP transport.
         // This test performs no network requests.
         QPointer<QNetworkAccessManager> owned;
         {
@@ -435,6 +435,25 @@ private slots:
         QCOMPARE(manager.lastAccept, QByteArray("application/dns-message"));
         QCOMPARE(manager.lastContentType, QByteArray("application/dns-message"));
         QVERIFY(manager.lastQuery.size() >= 12);
+    }
+
+    void httpTransportRejectsPlainHttpWithoutNetworkAccess()
+    {
+        FakeHttp manager;
+        QJDns dns;
+        auto *transport = new QJDnsHttpTransport(
+            QUrl(QStringLiteral("http://example.test/dns-query")), &manager);
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
+
+        bool rejected = false;
+        connect(&dns, &QJDns::error, &dns,
+                [&](int, QJDns::Error kind) {
+            rejected = kind == QJDns::ErrorGeneric;
+        });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(rejected, 5000);
+        QCOMPARE(manager.calls, 0); // Must not perform a plaintext HTTP request.
     }
 
     void httpRequestFailureNeverFallsBack()
