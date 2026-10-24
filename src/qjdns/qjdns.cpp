@@ -28,6 +28,10 @@
 #include "qjdns_transport.h"
 #include "qjdns_querytransport.h"
 
+#ifdef Q_OS_ANDROID
+QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *parent);
+#endif
+
 #include <QUdpSocket>
 
 // for fprintf
@@ -368,6 +372,10 @@ void QJDns::Private::cleanup()
 bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 {
     mode = _mode;
+#ifdef Q_OS_ANDROID
+    if(mode == Unicast && !queryTransport && !transport)
+        queryTransport = qjdns_create_android_query_transport(this);
+#endif
 
     if(queryTransport)
     {
@@ -399,7 +407,7 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     else
     {
         if(!transport)
-            transport = qjdns_create_transport(this, mode == Unicast);
+            transport = qjdns_create_transport(this);
         if(mode == Multicast && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
         {
             delete transport;
