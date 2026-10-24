@@ -60,7 +60,7 @@ class JDNS_EXPORT QJDns : public QObject
 {
     Q_OBJECT
 public:
-    /** @brief DNS session mode; managed transports support Unicast only. */
+    /** @brief DNS session mode; query transports support Unicast only. */
     enum Mode
     {
         Unicast,
@@ -231,7 +231,7 @@ public:
      * @brief Read host OS DNS configuration.
      * @return Configured resolver addresses, search domains and hosts.
      * @warning This consults local system DNS *configuration*. It is not
-     * required for proxied managed transport use; callers seeking to avoid
+     * required for proxied query transport use; callers seeking to avoid
      * local DNS leaks should not use it to select a fallback resolver.
      */
     static SystemInfo systemInfo();
@@ -241,7 +241,7 @@ public:
      * @param address IPv4/IPv6 address family or desired interface.
      * @return Interface address, or a null QHostAddress if detection fails.
      * @note This method probes multicast networking; it is unrelated to
-     * the new managed unicast DNS transports.
+     * asynchronous unicast query transports.
      */
     static QHostAddress detectPrimaryMulticast(const QHostAddress &address);
 
