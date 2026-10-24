@@ -30,7 +30,7 @@
 #include <QElapsedTimer>
 #include <QStringList>
 
-class QJDnsTransport;
+class QJDnsDatagramTransport;
 class QJDnsQueryTransport;
 class QTimer;
 
@@ -83,7 +83,7 @@ public:
     QJDns *q;
     QJDns::Mode mode;
     jdns_session_t *sess;
-    QJDnsTransport *transport;
+    QJDnsDatagramTransport *transport;
     QJDnsQueryTransport *queryTransport;
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
