@@ -27,3 +27,27 @@ jobs:
         run: cmake --build build --parallel 3
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure C-only core with ASan and UBSan
+        run: >
+          cmake -S . -B build-sanitized -G Ninja
+          -D BUILD_QJDNS=OFF
+          -D JDNS_BUILD_TESTS=ON
+          -D JDNS_ENABLE_INSTALL=OFF
+          -D CMAKE_BUILD_TYPE=Debug
+          -D CMAKE_C_COMPILER=clang
+          -D CMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -D CMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build-sanitized --parallel 3
+      - name: Run DNS and mDNS memory-safety tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-sanitized --output-on-failure
