@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.19)
 set(qjdns_MOC_HDRS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
-    "${JDNS_INCLUDEDIR}/qjdns_transport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_datagramtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_querytransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
     qjdns_p.h
@@ -13,7 +13,7 @@ set(qjdns_MOC_HDRS
 set(qjdns_SRCS
     qjdns.cpp
     qjdns_sock.cpp
-    qjdns_transport.cpp
+    qjdns_datagramtransport.cpp
     qjdns_tcptransport.cpp
     qjdns_dohtransport.cpp
     qjdns_externaltransport.cpp
@@ -27,7 +27,7 @@ endif()
 set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
-    "${JDNS_INCLUDEDIR}/qjdns_transport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_datagramtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_tcptransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_dohtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
