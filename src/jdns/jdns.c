@@ -31,8 +31,6 @@
 
 #define JDNS_UNICAST_OUT_MAX  512
 #define JDNS_UNICAST_IN_MAX   16384
-#define JDNS_UDP_MUL_OUT_MAX  9000
-#define JDNS_UDP_MUL_IN_MAX   16384
 
 // cache no more than 7 days
 #define JDNS_TTL_MAX          (86400 * 7)
@@ -2361,10 +2359,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             break;
         }
 
-        if(s->async_unicast)
-            _debug_line(s, "RECV managed (size=%d)", bufsize);
-        else
-            _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
+        _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
         _print_hexdump(s, buf, bufsize);
 
         if(!jdns_packet_import(&packet, buf, bufsize))
@@ -2402,7 +2397,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             }
         }
 
-        if(q && !s->async_unicast)
+        if(q)
         {
             // what name server did it come from?
             for(k = 0; k < s->name_servers->count; ++k)
