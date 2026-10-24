@@ -170,8 +170,8 @@ private slots:
         QJDns dns;
         auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), server.serverPort(),
                                                 QNetworkProxy(QNetworkProxy::NoProxy));
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool success = false;
         bool failure = false;
         connect(&dns, &QJDns::resultsReady, &dns, [&](int, const QJDns::Response &response) {
@@ -253,8 +253,8 @@ private slots:
         auto *transport = new QJDnsTcpTransport(QStringLiteral("dns-server.invalid"), 53,
                                                 QNetworkProxy(QNetworkProxy::Socks5Proxy,
                                                               QStringLiteral("127.0.0.1"), socks.serverPort()));
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool success = false;
         connect(&dns, &QJDns::resultsReady, &dns, [&](int, const QJDns::Response &answer) {
             success = containsExpectedSrv(answer);
@@ -282,8 +282,8 @@ private slots:
             transport->networkAccessManager()->setProxy(socks);
             QCOMPARE(manager->proxy().type(), QNetworkProxy::Socks5Proxy);
             owned = manager;
-            QVERIFY(dns.setTransport(transport));
-            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+            QVERIFY(dns.setQueryTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast));
             QVERIFY(owned);
         }
         QVERIFY(owned.isNull());
@@ -303,8 +303,8 @@ private slots:
             QVERIFY(transport->findChildren<QNetworkAccessManager *>().isEmpty());
             QCOMPARE(transport->networkAccessManager(), static_cast<QNetworkAccessManager *>(&manager));
             QCOMPARE(manager.parent(), &owner);
-            QVERIFY(dns.setTransport(transport));
-            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+            QVERIFY(dns.setQueryTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast));
         }
         QVERIFY(observed);
         QCOMPARE(manager.parent(), &owner);
@@ -316,8 +316,8 @@ private slots:
         QJDns dns;
         const QUrl url(QStringLiteral("https://example.test/dns-query"));
         auto *transport = new QJDnsDohTransport(url, &manager);
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool success = false;
         connect(&dns, &QJDns::resultsReady, &dns, [&](int, const QJDns::Response &response) {
             success = containsExpectedSrv(response);
@@ -338,8 +338,8 @@ private slots:
         QJDns dns;
         auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")),
                                                 &manager);
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool failed = false;
         connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error) { failed = true; });
         QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) > 0);
@@ -357,8 +357,8 @@ private slots:
         QJDns dns;
         auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), closedPort,
                                                 QNetworkProxy(QNetworkProxy::NoProxy));
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool failed = false;
         connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error) { failed = true; });
         QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) > 0);
@@ -382,8 +382,8 @@ private slots:
         auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), silent.serverPort(),
                                                 QNetworkProxy(QNetworkProxy::NoProxy));
         transport->setTimeout(50);
-        QVERIFY(dns.setTransport(transport));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool failed = false;
         connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error) { failed = true; });
         QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) > 0);
@@ -400,12 +400,12 @@ private slots:
         auto *external = new QJDnsExternalTransport;
         int calls = 0;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [external, &calls](quint64 requestId, const QByteArray &request) {
+                [external, &calls](int requestId, const QByteArray &request) {
             ++calls;
             external->completeRequest(requestId, srvAnswer(request));
         });
-        QVERIFY(dns.setTransport(external));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
 
         bool success = false;
         connect(&dns, &QJDns::resultsReady, &dns,
@@ -421,10 +421,10 @@ private slots:
     {
         QJDns dns;
         auto *external = new QJDnsExternalTransport;
-        QHash<quint64, QByteArray> requests;
-        QList<quint64> issuedOrder;
+        QHash<int, QByteArray> requests;
+        QList<int> issuedOrder;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [external, &requests, &issuedOrder](quint64 id, const QByteArray &packet) {
+                [external, &requests, &issuedOrder](int id, const QByteArray &packet) {
             requests.insert(id, packet);
             issuedOrder.append(id);
             if(issuedOrder.size() == 2) {
@@ -432,8 +432,8 @@ private slots:
                 external->completeRequest(issuedOrder.at(0), srvAnswer(requests.value(issuedOrder.at(0))));
             }
         });
-        QVERIFY(dns.setTransport(external));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
         int completed = 0;
         connect(&dns, &QJDns::resultsReady, &dns,
                 [&](int, const QJDns::Response &response) {
@@ -454,9 +454,9 @@ private slots:
         auto *external = new QJDnsExternalTransport;
         int calls = 0;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [&calls](quint64, const QByteArray &) { ++calls; });
-        QVERIFY(dns.setTransport(external));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+                [&calls](int, const QByteArray &) { ++calls; });
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
 
         int failed = -1;
         connect(&dns, &QJDns::error, &dns,
@@ -473,12 +473,12 @@ private slots:
         auto *external = new QJDnsExternalTransport;
         int calls = 0;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [external, &calls](quint64 id, const QByteArray &) {
+                [external, &calls](int id, const QByteArray &) {
             ++calls;
             external->failRequest(id, QStringLiteral("TLS handshake rejected"));
         });
-        QVERIFY(dns.setTransport(external));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
 
         bool failed = false;
         connect(&dns, &QJDns::error, &dns,
@@ -493,20 +493,20 @@ private slots:
         QJDns dns;
         auto *external = new QJDnsExternalTransport;
         external->setTimeout(30);
-        quint64 requestId = 0;
+        int requestId = 0;
         QByteArray original;
         bool cancelled = false;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [&](quint64 id, const QByteArray &packet) {
+                [&](int id, const QByteArray &packet) {
             requestId = id;
             original = packet;
         });
         connect(external, &QJDnsExternalTransport::requestCancelled, &dns,
-                [&](quint64 id) {
+                [&](int id) {
             cancelled = id == requestId;
         });
-        QVERIFY(dns.setTransport(external));
-        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
         bool failed = false;
         connect(&dns, &QJDns::error, &dns,
                 [&](int, QJDns::Error) { failed = true; });
@@ -523,29 +523,26 @@ private slots:
     void externalCloseNotifiesBackendAndIgnoresLateResult()
     {
         QJDnsExternalTransport external;
-        const int handle = external.open(QHostAddress::AnyIPv4, 0, QHostAddress());
-        QVERIFY(handle > 0);
-        // Only the wire header and question are needed for transport testing.
         QByteArray request(12, '\0');
-        request += encodeName("_xmpp-client._tcp.example.com");
+        request += encodeName("_xmpp-client._tcp.example.org");
         put16(&request, 33);
         put16(&request, 1);
-        quint64 cancelledId = 0;
-        int writes = 0;
-        int ready = 0;
+        int cancelledId = 0;
+        int dispatched = 0;
+        int responses = 0;
         connect(&external, &QJDnsExternalTransport::requestCancelled, &external,
-                [&](quint64 id) { cancelledId = id; });
+                [&](int id) { cancelledId = id; });
         connect(&external, &QJDnsExternalTransport::queryRequested, &external,
-                [&](quint64, const QByteArray &) { ++writes; });
-        connect(&external, &QJDnsTransport::readyRead, &external,
-                [&](int) { ++ready; });
-        QCOMPARE(external.submit(handle, {}, 0, request), QJDnsTransport::Submitted);
-        QTRY_COMPARE_WITH_TIMEOUT(writes, 1, 3000);
-        external.close(handle);
-        QVERIFY(cancelledId != 0);
-        external.completeRequest(cancelledId, srvAnswer(request));
+                [&](int, const QByteArray &) { ++dispatched; });
+        connect(&external, &QJDnsQueryTransport::responseReady, &external,
+                [&](int, const QByteArray &) { ++responses; });
+        external.startRequest(42, request);
+        QTRY_COMPARE_WITH_TIMEOUT(dispatched, 1, 3000);
+        external.cancelRequest(42);
+        QCOMPARE(cancelledId, 42);
+        external.completeRequest(42, srvAnswer(request));
         QCoreApplication::processEvents();
-        QCOMPARE(ready, 0);
+        QCOMPARE(responses, 0);
     }
 
     void customManagedTransportCannotPublishMulticast()
@@ -553,7 +550,7 @@ private slots:
         QJDns dns;
         auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), 53,
                                                 QNetworkProxy(QNetworkProxy::NoProxy));
-        QVERIFY(dns.setTransport(transport));
+        QVERIFY(dns.setQueryTransport(transport));
         QVERIFY(!dns.init(QJDns::Multicast, QHostAddress::AnyIPv4));
     }
 };
