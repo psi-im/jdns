@@ -34,14 +34,14 @@
 #include <QtCore>
 #include <QtNetwork>
 
-class QJDnsTransport;
+class QJDnsDatagramTransport;
 class QJDnsQueryTransport;
 
 /**
  * @brief Low-level, asynchronous Qt wrapper around the JDNS DNS engine.
  *
  * A QJDns instance handles one unicast or multicast DNS session. To use a
- * custom DNS-over-TCP, DoH or external backend, call setTransport() exactly
+ * custom DNS-over-TCP, DoH or external backend, call setDatagramTransport() exactly
  * once before init(). Otherwise platform-default UDP transport is used.
  *
  * JDNS still encodes/decodes DNS messages; transport injection changes only
@@ -52,7 +52,7 @@ class QJDnsQueryTransport;
  * transport on the same Qt thread.
  * @warning Selecting a managed transport does not automatically configure a
  * proxy: explicit TCP/HTTP transport settings determine where packets go.
- * @see QJDnsTransport, QJDnsTcpTransport, QJDnsDohTransport,
+ * @see QJDnsDatagramTransport, QJDnsTcpTransport, QJDnsDohTransport,
  * QJDnsExternalTransport
  */
 class JDNS_EXPORT QJDns : public QObject
@@ -177,11 +177,11 @@ public:
      * If false, the caller remains responsible for the transport. On success,
      * it is reparented to QJDns's private implementation and deleted during
      * shutdown/cleanup; do not reuse it for another DNS instance.
-     * @warning Call before init(). ManagedUnicast transports are incompatible
-     * with Multicast mode. If no transport is injected, default network I/O
-     * is provided by the platform (normally UDP).
+     * @warning Call before init(). This interface is only for datagram
+     * transport I/O; use setQueryTransport() for unicast TCP, DoH or external
+     * request transports. The default datagram implementation is UDP.
      */
-    bool setTransport(QJDnsTransport *transport);
+    bool setDatagramTransport(QJDnsDatagramTransport *transport);
 
     /**
      * @brief Configure a native asynchronous unicast query transport.
@@ -203,11 +203,11 @@ public:
      * @brief Initialize the DNS engine and chosen network transport.
      * @param mode Unicast resolution or multicast querying/publishing.
      * @param address Network interface/bind address used by JDNS. Managed
-     * unicast transports may ignore this address and open logical handles.
+     * unicast query transports do not bind and can use init(Unicast) instead.
      * @return true when initialization succeeds; false otherwise.
      * @note init() may delete a configured transport if initialization fails;
      * do not retain or dereference a non-owning pointer to it afterward.
-     * ManagedUnicast transports are rejected when @p mode is Multicast.
+     * Query transports are rejected when @p mode is Multicast.
      */
     bool init(Mode mode, const QHostAddress &address);
 
@@ -247,7 +247,7 @@ public:
     /**
      * @brief Set explicit resolver addresses for normal unicast DNS.
      * @param list DNS servers that ordinary JDNS unicast packets may target.
-     * @note Ignored for ManagedUnicast transports: TCP/DoH/external routing
+     * @note Ignored for native asynchronous transports: TCP/DoH/external routing
      * must be configured on those transports themselves.
      */
     void setNameServers(const QList<NameServer> &list);
@@ -259,7 +259,7 @@ public:
      * @return JDNS request identifier; use it for resultsReady(), error(),
      * and queryCancel(). A nonpositive value indicates failure to start.
      * @note The query uses only this instance's selected transport. For a
-     * managed transport, query completion and timeouts originate from that
+     * native query transport, completion and timeouts originate from that
      * transport; no implicit system-DNS retry is performed.
      */
     int queryStart(const QByteArray &name, int type);
@@ -280,8 +280,8 @@ public:
      * @param m Unique or Shared publication semantics.
      * @param record DNS resource record to publish.
      * @return Publication handle used for updates, cancellation and signals.
-     * @warning Multicast mode only; not supported by any ManagedUnicast
-     * transport such as TCP, DoH or External.
+     * @warning Multicast mode only; unsupported by unicast TCP, DoH and
+     * External query transports.
      */
     int publishStart(PublishMode m, const Record &record);
 
