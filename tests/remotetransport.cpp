@@ -404,6 +404,27 @@ private slots:
         QCOMPARE(requests.size(), 2);
     }
 
+    void externalQueryWithUnencodableNameFails()
+    {
+        // A label longer than 63 bytes cannot be put on the wire. JDNS has no
+        // retry timer for a managed transport, so it must fail the query.
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        int calls = 0;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [&calls](quint64, const QByteArray &) { ++calls; });
+        QVERIFY(dns.setTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+
+        int failed = -1;
+        connect(&dns, &QJDns::error, &dns,
+                [&failed](int id, QJDns::Error) { failed = id; });
+        const int id = dns.queryStart(QByteArray(64, 'a') + ".example.", QJDns::A);
+        QVERIFY(id > 0);
+        QTRY_COMPARE_WITH_TIMEOUT(failed, id, 5000);
+        QCOMPARE(calls, 0);
+    }
+
     void externalBackendFailureCannotUseLocalDns()
     {
         QJDns dns;

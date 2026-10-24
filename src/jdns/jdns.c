@@ -1761,7 +1761,8 @@ void _unicast_cancel(jdns_session_t *s, query_t *q)
     }
 }
 
-void _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
+// returns 0 if the query cannot be encoded
+int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
 {
     jdns_packet_t *packet;
     datagram_t *a;
@@ -1782,7 +1783,7 @@ void _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int r
     {
         _debug_line(s, "outgoing packet export error, not sending");
         jdns_packet_delete(packet);
-        return;
+        return 0;
     }
 
     a = datagram_new();
@@ -1807,6 +1808,7 @@ void _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int r
     jdns_packet_delete(packet);
 
     list_insert(s->outgoing, a, -1);
+    return 1;
 }
 
 // return 1 if packets still need to be written
@@ -2081,8 +2083,42 @@ int _unicast_do_writes(jdns_session_t *s, int now)
                     break;
                 }
             }
-            if(!already_sending)
-                _queue_packet(s, q, 0, 1, 0);
+            if(!already_sending && !_queue_packet(s, q, 0, 1, 0))
+            {
+                // The query cannot be encoded (a label is too long, for
+                // example). Without a retry timer it would never finish.
+
+                // report event to any requests listening
+                for(k = 0; k < q->req_ids_count; ++k)
+                {
+                    jdns_event_t *event = jdns_event_new();
+                    event->type = JDNS_EVENT_RESPONSE;
+                    event->id = q->req_ids[k];
+                    event->status = JDNS_STATUS_ERROR;
+                    _append_event_and_hold_id(s, event);
+                }
+
+                // report error to parent
+                if(q->cname_parent)
+                {
+                    // report event to any requests listening
+                    query_t *cq = q->cname_parent;
+                    for(k = 0; k < cq->req_ids_count; ++k)
+                    {
+                        jdns_event_t *event = jdns_event_new();
+                        event->type = JDNS_EVENT_RESPONSE;
+                        event->id = cq->req_ids[k];
+                        event->status = JDNS_STATUS_ERROR;
+                        _append_event_and_hold_id(s, event);
+                    }
+                    list_remove(s->queries, cq);
+                }
+
+                _remove_query_datagrams(s, q);
+                list_remove(s->queries, q);
+                --n; // adjust position
+                continue;
+            }
 
             // No JDNS retry timer while the transport owns this request.
             q->time_start = -1;
