@@ -418,39 +418,41 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     callbacks.time_now = cb_time_now;
     callbacks.rand_int = cb_rand_int;
     callbacks.debug_line = cb_debug_line;
-    callbacks.transport_bind = cb_transport_bind;
-    callbacks.transport_unbind = cb_transport_unbind;
-    callbacks.transport_read = cb_transport_read;
-    callbacks.transport_write = cb_transport_write;
-    callbacks.async_send = cb_async_send;
-    callbacks.async_cancel = cb_async_cancel;
     sess = jdns_session_new(&callbacks);
     jdns_set_hold_ids_enabled(sess, 1);
     need_handle = false;
 
     int ret;
 
-    jdns_address_t *baddr = qt2addr(address);
-    if(mode == Unicast)
+    if(queryTransport)
     {
-        if(queryTransport)
-            ret = jdns_init_async_unicast(sess);
-        else
-        {
-            ret = jdns_init_unicast(sess, baddr, 0);
-        }
+        jdns_async_callbacks_t asyncCallbacks = {};
+        asyncCallbacks.send = cb_async_send;
+        asyncCallbacks.cancel = cb_async_cancel;
+        ret = jdns_init_async_unicast(sess, &asyncCallbacks);
     }
     else
     {
-        jdns_address_t *maddr;
-        if(address.protocol() == QAbstractSocket::IPv6Protocol)
-            maddr = jdns_address_multicast6_new();
+        jdns_datagram_callbacks_t datagramCallbacks = {};
+        datagramCallbacks.transport_bind = cb_transport_bind;
+        datagramCallbacks.transport_unbind = cb_transport_unbind;
+        datagramCallbacks.transport_read = cb_transport_read;
+        datagramCallbacks.transport_write = cb_transport_write;
+        jdns_address_t *baddr = qt2addr(address);
+        if(mode == Unicast)
+            ret = jdns_init_unicast(sess, &datagramCallbacks, baddr, 0);
         else
-            maddr = jdns_address_multicast4_new();
-        ret = jdns_init_multicast(sess, baddr, JDNS_MULTICAST_PORT, maddr);
-        jdns_address_delete(maddr);
+        {
+            jdns_address_t *maddr;
+            if(address.protocol() == QAbstractSocket::IPv6Protocol)
+                maddr = jdns_address_multicast6_new();
+            else
+                maddr = jdns_address_multicast4_new();
+            ret = jdns_init_multicast(sess, &datagramCallbacks, baddr, JDNS_MULTICAST_PORT, maddr);
+            jdns_address_delete(maddr);
+        }
+        jdns_address_delete(baddr);
     }
-    jdns_address_delete(baddr);
 
     if(!ret)
     {
