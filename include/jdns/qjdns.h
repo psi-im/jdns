@@ -250,9 +250,11 @@ public:
     /**
      * @brief Cancel a previously started query.
      * @param id Identifier returned by queryStart().
-     * @note The DNS engine releases the operation. Managed transports then
-     * cancel their corresponding in-flight network requests. Late replies
-     * must not recreate cancelled results.
+     * @note JDNS stops delivering results for the cancelled query, but may
+     * retain the underlying DNS transaction briefly for cache population.
+     * Therefore queryCancel() does not guarantee that a previously submitted
+     * TCP/HTTPS operation is aborted immediately. Closing the transport
+     * handle or shutting down the session cancels associated network I/O.
      */
     void queryCancel(int id);
 
