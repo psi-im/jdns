@@ -56,16 +56,18 @@ static void async_cancel(jdns_session_t *session, void *app, int id)
 static jdns_session_t *new_session(Fixture *f)
 {
     jdns_callbacks_t cb;
+    jdns_async_callbacks_t async_cb;
     jdns_session_t *s;
     memset(&cb, 0, sizeof(cb));
+    memset(&async_cb, 0, sizeof(async_cb));
     cb.app = f;
     cb.time_now = clock_now;
     cb.rand_int = random_number;
     cb.debug_line = debug_line;
-    cb.async_send = async_send;
-    cb.async_cancel = async_cancel;
+    async_cb.send = async_send;
+    async_cb.cancel = async_cancel;
     s = jdns_session_new(&cb);
-    assert(s && jdns_init_async_unicast(s));
+    assert(s && jdns_init_async_unicast(s, &async_cb));
     return s;
 }
 static void pump(jdns_session_t *s)
