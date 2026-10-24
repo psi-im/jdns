@@ -20,8 +20,9 @@ class QNetworkAccessManager;
  *
  * The internally created manager uses Qt's default networking and proxy
  * policy. To guarantee that DoH uses a particular SOCKS5/HTTP proxy, pass
- * an explicitly configured QNetworkAccessManager. No fallback to another
- * DNS transport occurs when an HTTPS request fails.
+ * an explicitly configured QNetworkAccessManager, or configure the manager
+ * returned by networkAccessManager() before starting the first query.
+ * No fallback to another DNS transport occurs when HTTPS fails.
  *
  * Composes an internal QJDnsExternalTransport for DNS transaction bookkeeping
  * and timeout without exposing its backend completion methods to callers.
@@ -35,6 +36,9 @@ public:
                       QObject *parent = nullptr);
     ~QJDnsDohTransport() override;
 
+    // Non-owning accessor. The transport owns this manager only when it
+    // created the default one; callers may configure proxy/TLS before queries.
+    QNetworkAccessManager *networkAccessManager() const;
     void setTimeout(int milliseconds);
     Capabilities capabilities() const override { return ManagedUnicast; }
     int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) override;
