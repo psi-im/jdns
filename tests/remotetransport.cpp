@@ -5,6 +5,7 @@
  */
 #include <qjdns.h>
 #include <qjdns_remotetransport.h>
+#include <qjdns_externaltransport.h>
 
 #include <QCoreApplication>
 #include <QNetworkAccessManager>
@@ -319,6 +320,110 @@ private slots:
         connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error) { failed = true; });
         QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
         QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
+    }
+
+    void externalBackendUsesExistingSrvParser()
+    {
+        // Models an application-owned (e.g. QCA) async DoH client. No HTTP
+        // implementation or QNetworkAccessManager is passed to JDNS.
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        int calls = 0;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [external, &calls](quint64 requestId, const QByteArray &request) {
+            ++calls;
+            external->completeRequest(requestId, srvAnswer(request));
+        });
+        QVERIFY(dns.setTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+
+        bool success = false;
+        connect(&dns, &QJDns::resultsReady, &dns,
+                [&success](int, const QJDns::Response &answer) {
+            success = containsExpectedSrv(answer);
+        });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(success, 5000);
+        QCOMPARE(calls, 1);
+    }
+
+    void externalBackendFailureCannotUseLocalDns()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        int calls = 0;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [external, &calls](quint64 id, const QByteArray &) {
+            ++calls;
+            external->failRequest(id, QStringLiteral("QCA TLS handshake rejected"));
+        });
+        QVERIFY(dns.setTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+
+        bool failed = false;
+        connect(&dns, &QJDns::error, &dns,
+                [&failed](int, QJDns::Error) { failed = true; });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
+        QCOMPARE(calls, 1);
+    }
+
+    void externalTimeoutCancelsBackendAndRejectsLateResponse()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        external->setTimeout(30);
+        quint64 requestId = 0;
+        QByteArray original;
+        bool cancelled = false;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [&](quint64 id, const QByteArray &packet) {
+            requestId = id;
+            original = packet;
+        });
+        connect(external, &QJDnsExternalTransport::requestCancelled, &dns,
+                [&](quint64 id) {
+            cancelled = id == requestId;
+        });
+        QVERIFY(dns.setTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        bool failed = false;
+        connect(&dns, &QJDns::error, &dns,
+                [&](int, QJDns::Error) { failed = true; });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
+        QVERIFY(cancelled);
+        QVERIFY(requestId != 0);
+        external->completeRequest(requestId, srvAnswer(original));
+        QVERIFY(!external->takeResponse(1, nullptr)); // obsolete response was not revived
+    }
+
+    void externalCloseNotifiesBackendAndIgnoresLateResult()
+    {
+        QJDnsExternalTransport external;
+        const int handle = external.open(QHostAddress::AnyIPv4, 0, QHostAddress());
+        QVERIFY(handle > 0);
+        // Only the wire header and question are needed for transport testing.
+        QByteArray request(12, '\0');
+        request += encodeName("_xmpp-client._tcp.spectrum.im");
+        put16(&request, 33);
+        put16(&request, 1);
+        quint64 cancelledId = 0;
+        int writes = 0;
+        int ready = 0;
+        connect(&external, &QJDnsExternalTransport::requestCancelled, &external,
+                [&](quint64 id) { cancelledId = id; });
+        connect(&external, &QJDnsExternalTransport::queryRequested, &external,
+                [&](quint64, const QByteArray &) { ++writes; });
+        connect(&external, &QJDnsTransport::readyRead, &external,
+                [&](int) { ++ready; });
+        QCOMPARE(external.submit(handle, {}, 0, request), QJDnsTransport::Submitted);
+        QTRY_COMPARE_WITH_TIMEOUT(writes, 1, 3000);
+        external.close(handle);
+        QVERIFY(cancelledId != 0);
+        external.completeRequest(cancelledId, srvAnswer(request));
+        QCoreApplication::processEvents();
+        QCOMPARE(ready, 0);
     }
 
     void customManagedTransportCannotPublishMulticast()
