@@ -2022,7 +2022,7 @@ int _unicast_do_writes(jdns_session_t *s, int now)
         giveup = 0;
 
         // Retry and nameserver selection belong to JDNS only for the
-        // classic unicast transport. A managed transport owns both.
+        // classic UDP unicast. A native async transport owns both.
         if(!s->async_unicast && q->step == 8)
             giveup = 1;
 
