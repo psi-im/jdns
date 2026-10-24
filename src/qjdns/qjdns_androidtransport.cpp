@@ -29,7 +29,6 @@
 #include <QHostInfo>
 #include <QJniObject>
 #include <QNetworkProxy>
-#include <QQueue>
 #include <QSet>
 #include <QSslSocket>
 #include <QSocketNotifier>
@@ -300,11 +299,6 @@ protected:
         return true;
     }
 
-    bool isKnownHandle(int handle) const
-    {
-        return handles_.contains(handle);
-    }
-
     void removeOutstanding(quint64 key)
     {
         outstanding_.remove(key);
@@ -313,21 +307,25 @@ protected:
     void queueResponse(int handle, quint64 key, const QByteArray &data)
     {
         outstanding_.remove(key);
-        if(!handles_.remove(handle))
+        if(!handles_.contains(handle))
             return;
         QMetaObject::invokeMethod(this, [this, handle, data]() {
-            emit responseReady(handle, data);
+            // The consumer may cancel after the backend completed, before
+            // this event is delivered. Never emit a stale DNS response.
+            if(handles_.remove(handle))
+                emit responseReady(handle, data);
         }, Qt::QueuedConnection);
     }
 
     void queueFailure(int handle, quint64 key, const QByteArray &, const QString &reason)
     {
         outstanding_.remove(key);
-        if(!handles_.remove(handle))
+        if(!handles_.contains(handle))
             return;
         const bool isTimeout = reason.contains(QStringLiteral("timed out"), Qt::CaseInsensitive);
         QMetaObject::invokeMethod(this, [this, handle, reason, isTimeout]() {
-            emit failed(handle, reason, isTimeout ? Timeout : NetworkError);
+            if(handles_.remove(handle))
+                emit failed(handle, reason, isTimeout ? Timeout : NetworkError);
         }, Qt::QueuedConnection);
     }
 
