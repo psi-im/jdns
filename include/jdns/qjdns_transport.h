@@ -175,11 +175,10 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QJDnsTransport::Capabilities)
 /**
  * @brief Construct the platform's default transport, usually UDP.
  * @param parent QObject owner of the created transport.
- * @param unicast Whether the transport will serve unicast requests.
  * @return Newly allocated transport owned by @p parent.
  * @note This factory is used internally by QJDns when no custom transport
  * was injected. Most clients should use QJDns::setTransport() instead.
  */
-QJDnsTransport *qjdns_create_transport(QObject *parent, bool unicast);
+QJDnsTransport *qjdns_create_transport(QObject *parent);
 
 #endif
