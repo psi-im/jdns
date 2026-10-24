@@ -41,8 +41,9 @@ class QJDnsQueryTransport;
  * @brief Low-level, asynchronous Qt wrapper around the JDNS DNS engine.
  *
  * A QJDns instance handles one unicast or multicast DNS session. To use a
- * custom DNS-over-TCP, DoH or external backend, call setDatagramTransport() exactly
- * once before init(). Otherwise platform-default UDP transport is used.
+ * custom TCP, DoH or external DNS resolution, call setQueryTransport()
+ * before init(). For custom UDP/mDNS I/O use setDatagramTransport(). When
+ * neither is selected, the platform default transport is used.
  *
  * JDNS still encodes/decodes DNS messages; transport injection changes only
  * the network I/O and the semantics of DNS server selection. The caller owns
@@ -50,8 +51,8 @@ class QJDnsQueryTransport;
  *
  * @note QJDns is QObject/event-loop based. Keep the instance and its
  * transport on the same Qt thread.
- * @warning Selecting a managed transport does not automatically configure a
- * proxy: explicit TCP/HTTP transport settings determine where packets go.
+ * @warning A query transport does not automatically inherit another
+ * network component's proxy configuration; configure its endpoint explicitly.
  * @see QJDnsDatagramTransport, QJDnsTcpTransport, QJDnsDohTransport,
  * QJDnsExternalTransport
  */
@@ -193,8 +194,8 @@ public:
     bool setQueryTransport(QJDnsQueryTransport *transport);
 
     /**
-     * @brief Initialize native unicast resolution without a bind address.
-     * @param mode Must be Unicast with a query transport configured.
+     * @brief Initialize unicast DNS using a query transport or default UDP.
+     * @param mode Must be Unicast. Multicast needs an explicit bind address.
      * @return true on successful initialization.
      */
     bool init(Mode mode);
@@ -202,8 +203,8 @@ public:
     /**
      * @brief Initialize the DNS engine and chosen network transport.
      * @param mode Unicast resolution or multicast querying/publishing.
-     * @param address Network interface/bind address used by JDNS. Managed
-     * unicast query transports do not bind and can use init(Unicast) instead.
+     * @param address Network interface/bind address used by UDP/mDNS. Native
+     * query transports do not bind and can use init(Unicast) instead.
      * @return true when initialization succeeds; false otherwise.
      * @note init() may delete a configured transport if initialization fails;
      * do not retain or dereference a non-owning pointer to it afterward.
@@ -258,7 +259,7 @@ public:
      * @param name DNS name to query; use wire-compatible encoding.
      * @param type DNS record type, such as QJDns::Srv or QJDns::A.
      * @return JDNS request identifier; use it for resultsReady(), error(),
-     * and queryCancel(). A nonpositive value indicates failure to start.
+     * and queryCancel(). Negative values indicate failure; zero is valid.
      * @note The query uses only this instance's selected transport. For a
      * native query transport, completion and timeouts originate from that
      * transport; no implicit system-DNS retry is performed.
@@ -268,11 +269,10 @@ public:
     /**
      * @brief Cancel a previously started query.
      * @param id Identifier returned by queryStart().
-     * @note JDNS stops delivering results for the cancelled query, but may
-     * retain the underlying DNS transaction briefly for cache population.
-     * Therefore queryCancel() does not guarantee that a previously submitted
-     * TCP/HTTPS operation is aborted immediately. Closing the transport
-     * handle or shutting down the session cancels associated network I/O.
+     * @note For native query transports, JDNS cancels the underlying
+     * network operation immediately after the final interested consumer
+     * cancels. A shared query remains active while any consumer needs it.
+     * Traditional UDP behavior may retain inactive transactions for caching.
      */
     void queryCancel(int id);
 
@@ -320,8 +320,8 @@ signals:
      * @brief A query or multicast publication failed.
      * @param id Operation handle from queryStart()/publishStart().
      * @param e DNS error category; consult debugLines() for diagnostics.
-     * @note Managed transports report network failures as DNS error
-     * responses instead of transparently choosing a local DNS server.
+     * @note Native query transport failures are reported directly through
+     * this signal; no synthetic DNS SERVFAIL or local fallback is used.
      */
     void error(int id, QJDns::Error e);
 
