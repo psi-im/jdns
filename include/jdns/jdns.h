@@ -480,7 +480,8 @@ JDNS_EXPORT void jdns_event_delete(jdns_event_t *e);
 JDNS_EXPORT jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks);
 
 /**
- * @param session to free
+ * @brief Destroy the resolver session and cancel outstanding requests.
+ * @param s Session returned by jdns_session_new().
  */
 JDNS_EXPORT void jdns_session_delete(jdns_session_t *s);
 
