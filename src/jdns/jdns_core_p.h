@@ -25,7 +25,7 @@ typedef struct list
 
 typedef struct query
 {
-    void (*dtor)(struct query *);
+    void (*dtor)(void *);
 
     int id;
 
@@ -85,13 +85,13 @@ typedef struct query
 
 typedef struct event
 {
-    void (*dtor)(struct event *);
+    void (*dtor)(void *);
     jdns_event_t *event;
 } event_t;
 
 typedef struct published_item
 {
-    void (*dtor)(struct published_item *);
+    void (*dtor)(void *);
     int id;
     int mode;
     unsigned char *qname;
