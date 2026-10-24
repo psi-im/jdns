@@ -905,6 +905,7 @@ jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
     s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
     s->async_unicast = 0;
+    s->initialized = 0;
     s->shutdown = 0;
     s->next_qid = 0;
     s->next_req_id = 1;
@@ -1158,7 +1159,7 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callba
                       const jdns_address_t *addr, int port)
 {
     int ret;
-    if(!s || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+    if(!s || s->initialized || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
        !callbacks->transport_read || !callbacks->transport_write)
         return 0;
     s->datagram = *callbacks;
@@ -1168,16 +1169,18 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callba
         return 0;
     s->handle = ret;
     s->port = port;
+    s->initialized = 1;
     return 1;
 }
 
 int jdns_init_async_unicast(jdns_session_t *s, const jdns_async_callbacks_t *callbacks)
 {
-    if(!s || !callbacks || !callbacks->send || !callbacks->cancel || s->handle)
+    if(!s || s->initialized || !callbacks || !callbacks->send || !callbacks->cancel)
         return 0;
     s->async = *callbacks;
     s->mode = 0;
     s->async_unicast = 1;
+    s->initialized = 1;
     return 1;
 }
 
@@ -1185,8 +1188,10 @@ int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *call
                         const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     int ret;
-    if(!s || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+    if(!s || s->initialized || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
        !callbacks->transport_read || !callbacks->transport_write)
+        return 0;
+    if(!maddr)
         return 0;
     s->datagram = *callbacks;
     s->mode = 1;
@@ -1199,6 +1204,7 @@ int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *call
 
     // class 1.  note: frame size is ignored by the jdns version of mdnsd
     s->mdns = mdnsd_new(0x0001, 1000, s->port, _callback_time_now, _callback_rand_int, s);
+    s->initialized = 1;
     return 1;
 }
 
@@ -1320,6 +1326,8 @@ void jdns_probe(jdns_session_t *s)
 
 int jdns_query(jdns_session_t *s, const unsigned char *name, int rtype)
 {
+    if(!s || !s->initialized || !name)
+        return -1;
     if(s->mode == 0)
         return _unicast_query(s, name, rtype);
     else
@@ -1393,16 +1401,21 @@ void jdns_cancel_query(jdns_session_t *s, int id)
 
 int jdns_publish(jdns_session_t *s, int mode, const jdns_rr_t *rr)
 {
+    if(!s || !s->initialized || s->mode != 1 || !rr)
+        return -1;
     return _multicast_publish(s, mode, rr);
 }
 
 void jdns_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rr)
 {
-    _multicast_update_publish(s, id, rr);
+    if(s && s->initialized && s->mode == 1 && rr)
+        _multicast_update_publish(s, id, rr);
 }
 
 void jdns_cancel_publish(jdns_session_t *s, int id)
 {
+    if(!s || !s->initialized || s->mode != 1)
+        return;
     _unhold_req_id(s, id);
 
     _remove_events(s, JDNS_EVENT_PUBLISH, id);
@@ -1414,6 +1427,8 @@ int jdns_step(jdns_session_t *s)
 {
     int now, passed;
     int ret;
+    if(!s || !s->initialized)
+        return 0;
 
     // session is shut down
     if(s->shutdown == 2)
