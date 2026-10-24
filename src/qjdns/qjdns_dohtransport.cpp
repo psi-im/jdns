@@ -49,6 +49,11 @@ QJDnsDohTransport::~QJDnsDohTransport()
     delete d;
 }
 
+QNetworkAccessManager *QJDnsDohTransport::networkAccessManager() const
+{
+    return d->manager.data();
+}
+
 void QJDnsDohTransport::setTimeout(int milliseconds)
 {
     d->core->setTimeout(milliseconds);
