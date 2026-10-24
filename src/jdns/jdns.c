@@ -987,7 +987,6 @@ struct jdns_session
 {
     jdns_callbacks_t cb;
     int mode;
-    int managed_unicast;
     int async_unicast;
     int shutdown;
     int next_qid;
@@ -1019,7 +1018,6 @@ jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
 {
     jdns_session_t *s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
-    s->managed_unicast = 0;
     s->async_unicast = 0;
     s->shutdown = 0;
     s->next_qid = 0;
@@ -1289,17 +1287,8 @@ int jdns_init_async_unicast(jdns_session_t *s)
     if(!s || !s->cb.async_send || !s->cb.async_cancel || s->handle)
         return 0;
     s->mode = 0;
-    s->managed_unicast = 1;
     s->async_unicast = 1;
     return 1;
-}
-
-void jdns_set_managed_unicast(jdns_session_t *s, int enabled)
-{
-    if(s->mode != 0)
-        return;
-
-    s->managed_unicast = enabled ? 1 : 0;
 }
 
 int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
@@ -1328,7 +1317,7 @@ void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist
 {
     int n, k;
 
-    if(s->managed_unicast)
+    if(s->async_unicast)
         return;
 
     // removed?
@@ -2116,10 +2105,10 @@ int _unicast_do_writes(jdns_session_t *s, int now)
 
         // Retry and nameserver selection belong to JDNS only for the
         // classic unicast transport. A managed transport owns both.
-        if(!s->managed_unicast && q->step == 8)
+        if(!s->async_unicast && q->step == 8)
             giveup = 1;
 
-        if(!s->managed_unicast && s->name_servers->count == 0)
+        if(!s->async_unicast && s->name_servers->count == 0)
             giveup = 1;
 
         if(giveup)
@@ -2199,7 +2188,7 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             }
         }
 
-        if(s->managed_unicast)
+        if(s->async_unicast)
         {
             // The transport receives one complete DNS request and owns
             // routing, retry and failover until it produces a response.
@@ -2478,7 +2467,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             break;
         }
 
-        if(s->managed_unicast)
+        if(s->async_unicast)
             _debug_line(s, "RECV managed (size=%d)", bufsize);
         else
             _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
@@ -2519,7 +2508,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             }
         }
 
-        if(q && !s->managed_unicast)
+        if(q && !s->async_unicast)
         {
             // what name server did it come from?
             for(k = 0; k < s->name_servers->count; ++k)
