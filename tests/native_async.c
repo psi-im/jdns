@@ -358,6 +358,17 @@ static void incomplete_callbacks_fail_without_network_io(void)
     async_cb.send = async_send;
     async_cb.cancel = async_cancel;
     assert(jdns_init_async_unicast(s, &async_cb));
+    assert(!jdns_init_async_unicast(s, &async_cb));
+    {
+        jdns_rr_t *rr = jdns_rr_new();
+        jdns_rr_set_owner(rr, (const unsigned char *)"record.local.");
+        jdns_rr_set_PTR(rr, (const unsigned char *)"target.local.");
+        rr->ttl = 120;
+        assert(jdns_publish(s, JDNS_PUBLISH_SHARED, rr) == -1);
+        jdns_update_publish(s, 0, rr);  // must not access mDNS state
+        jdns_cancel_publish(s, 0);
+        jdns_rr_delete(rr);
+    }
     assert(f.sends == 0 && f.cancels == 0);
     jdns_session_delete(s);
 }
