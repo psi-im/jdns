@@ -493,7 +493,7 @@ private slots:
         QJDns dns;
         auto *external = new QJDnsExternalTransport;
         external->setTimeout(30);
-        int requestId = 0;
+        int requestId = -1;
         QByteArray original;
         bool cancelled = false;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
@@ -513,7 +513,7 @@ private slots:
         QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) > 0);
         QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
         QVERIFY(cancelled);
-        QVERIFY(requestId != 0);
+        QVERIFY(requestId >= 0);
         external->completeRequest(requestId, srvAnswer(original));
         // Completion after timeout must not schedule another DNS result.
         QCoreApplication::processEvents();
