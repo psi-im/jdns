@@ -57,18 +57,21 @@ void QJDnsExternalTransport::startRequest(int id, const QByteArray &dnsPacket)
     Q_ASSERT(thread() == QThread::currentThread());
     if(d->pending.contains(id))
         return;
-    if(dnsPacket.size() < 12 || dnsPacket.size() > QJDnsWire::MaxMessageSize)
-    {
-        QTimer::singleShot(0, this, [this, id]() {
-            emit failed(id, QStringLiteral("Invalid DNS query length"), NetworkError);
-        });
-        return;
-    }
     auto *r = new Private::Request;
     r->query = dnsPacket;
     r->timer = new QTimer(this);
     r->timer->setSingleShot(true);
     d->pending.insert(id, r);
+
+    // Even a rejected packet is tracked until its deferred error is delivered:
+    // cancelRequest() must be able to suppress that error before dispatch.
+    if(dnsPacket.size() < 12 || dnsPacket.size() > QJDnsWire::MaxMessageSize)
+    {
+        QTimer::singleShot(0, this, [this, id]() {
+            failRequest(id, QStringLiteral("Invalid DNS query length"), NetworkError);
+        });
+        return;
+    }
     connect(r->timer, &QTimer::timeout, this, [this, id]() {
         if(!d->pending.contains(id))
             return;
