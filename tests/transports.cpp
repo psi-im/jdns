@@ -292,8 +292,8 @@ private slots:
     void dohDoesNotTakeOwnershipOfExternalManager()
     {
         // External managers must never be reparented or deleted by QJDns.
-        FakeHttp manager;
         QObject owner;
+        FakeHttp manager;
         manager.setParent(&owner);
         QPointer<QNetworkAccessManager> observed(&manager);
         {
