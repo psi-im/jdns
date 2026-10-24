@@ -134,6 +134,7 @@ struct jdns_session
 };
 
 /* Shared resolver helpers consumed by the multicast module. */
+jdns_event_t *jdns_event_new(void);
 int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b);
 void _print_hexdump(jdns_session_t *s, const unsigned char *buf, int size);
 void _print_packet(jdns_session_t *s, const jdns_packet_t *packet);
