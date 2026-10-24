@@ -9,7 +9,7 @@ import re
 import sys
 
 readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
-blocks = re.findall(r"(?ms)^\`\`\`(\w+)\n(.*?)^\`\`\s*$", readme)
+blocks = re.findall(r"(?ms)^```(\w+)\n(.*?)^```\s*$", readme)
 
 def unique(lang, marker):
     candidates = [body for mode, body in blocks if mode == lang and marker in body]
