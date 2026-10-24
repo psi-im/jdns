@@ -517,6 +517,27 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(accepted.first()->state(), QAbstractSocket::UnconnectedState, 5000);
     }
 
+    void repeatedInitDoesNotReplaceLiveSession()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [external](int id, const QByteArray &query) {
+            external->completeRequest(id, srvAnswer(query));
+        });
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
+        QVERIFY(!dns.init(QJDns::Unicast));
+        QVERIFY(!dns.init(QJDns::Multicast, QHostAddress::AnyIPv4));
+        bool success = false;
+        connect(&dns, &QJDns::resultsReady, &dns,
+                [&](int, const QJDns::Response &answer) {
+            success = containsExpectedSrv(answer);
+        });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(success, 5000);
+    }
+
     void externalBackendUsesExistingSrvParser()
     {
         // Models an application-owned async DoH client. No HTTP
