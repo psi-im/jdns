@@ -30,8 +30,11 @@ local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
   When a manager is provided, the caller retains ownership and must keep it
   alive for all pending queries. A default-created QNAM uses Qt's normal
   network and proxy settings, not an implicit copy of an XMPP proxy profile.
-  Applications requiring a particular SOCKS5/HTTP proxy must explicitly
-  configure and pass their own manager; no transport fallback is attempted.
+  Applications requiring a particular SOCKS5/HTTP proxy must configure the
+  QNAM explicitly, either by supplying a preconfigured manager or via
+  `transport->networkAccessManager()->setProxy(proxy)` before querying.
+  The accessor does not transfer QNAM ownership. No DNS transport fallback
+  is attempted.
 - Both concrete transports reuse the request bookkeeping, timeout and
   cancellation logic of `QJDnsExternalTransport` internally rather than
   duplicating DNS parsing, packet IDs and retry logic.
@@ -59,7 +62,8 @@ local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
    proxy for **both** DNS and destination CONNECT (and supplies a configured
    HTTP manager for DoH). The optional default-owned QNAM uses Qt's networking
    defaults, so it is **not** appropriate for privacy-critical proxy profiles
-   unless the application's Qt-wide proxy configuration guarantees routing.
+   unless the caller explicitly configures its proxy via `networkAccessManager()`
+   or the application's Qt-wide proxy configuration guarantees routing.
    No fallback to a second DNS transport or system DNS is performed.
 2. The `QJDnsTcpTransport` calls QTcpSocket::connectToHost(server, port) with its
    caller-supplied QNetworkProxy. To avoid local hostname resolution, use
