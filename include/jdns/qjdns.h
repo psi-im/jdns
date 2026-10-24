@@ -35,6 +35,7 @@
 #include <QtNetwork>
 
 class QJDnsTransport;
+class QJDnsQueryTransport;
 
 /**
  * @brief Low-level, asynchronous Qt wrapper around the JDNS DNS engine.
