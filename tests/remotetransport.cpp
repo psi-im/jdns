@@ -347,6 +347,34 @@ private slots:
         QCOMPARE(calls, 1);
     }
 
+    void externalConcurrentQueriesCompleteOutOfOrder()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        QHash<quint64, QByteArray> requests;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [external, &requests](quint64 id, const QByteArray &packet) {
+            requests.insert(id, packet);
+            if(requests.size() == 2) {
+                const auto ids = requests.keys();
+                external->completeRequest(ids.at(1), srvAnswer(requests.value(ids.at(1))));
+                external->completeRequest(ids.at(0), srvAnswer(requests.value(ids.at(0))));
+            }
+        });
+        QVERIFY(dns.setTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        int completed = 0;
+        connect(&dns, &QJDns::resultsReady, &dns,
+                [&](int, const QJDns::Response &response) {
+            if(containsExpectedSrv(response))
+                ++completed;
+        });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.another.example.", QJDns::Srv) > 0);
+        QTRY_COMPARE_WITH_TIMEOUT(completed, 2, 5000);
+        QCOMPARE(requests.size(), 2);
+    }
+
     void externalBackendFailureCannotUseLocalDns()
     {
         QJDns dns;
@@ -395,7 +423,9 @@ private slots:
         QVERIFY(cancelled);
         QVERIFY(requestId != 0);
         external->completeRequest(requestId, srvAnswer(original));
-        QVERIFY(!external->takeResponse(1, nullptr)); // obsolete response was not revived
+        // Completion after timeout must not schedule another DNS result.
+        QCoreApplication::processEvents();
+        QVERIFY(cancelled);
     }
 
     void externalCloseNotifiesBackendAndIgnoresLateResult()
