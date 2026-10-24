@@ -28,9 +28,18 @@ jobs:
           -D JDNS_BUILD_TESTS=ON
           -D BUILD_JDNS_TOOL=OFF
           -D JDNS_QT_MAJOR_VERSION=${{ matrix.qt }}
-          -D JDNS_ENABLE_INSTALL=OFF
+          -D JDNS_ENABLE_INSTALL=ON
+          -D CMAKE_INSTALL_PREFIX=${{ github.workspace }}/stage
           -D CMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build --parallel 3
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Compile README example against installed Qt 6 package
+        if: matrix.qt == 6
+        run: |
+          cmake --install build
+          python3 tests/extract_readme_example.py readme-example
+          cmake -S readme-example -B readme-example/build -G Ninja \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage
+          cmake --build readme-example/build --parallel 3

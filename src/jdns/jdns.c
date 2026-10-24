@@ -22,7 +22,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "jdns_p.h"
+#include "jdns_core_p.h"
 
 #include <time.h>
 
@@ -31,8 +31,6 @@
 
 #define JDNS_UNICAST_OUT_MAX  512
 #define JDNS_UNICAST_IN_MAX   16384
-#define JDNS_UDP_MUL_OUT_MAX  9000
-#define JDNS_UDP_MUL_IN_MAX   16384
 
 // cache no more than 7 days
 #define JDNS_TTL_MAX          (86400 * 7)
@@ -45,7 +43,7 @@
 //----------------------------------------------------------------------------
 
 // declare this here, but implement it later after we define jdns_session_t
-static void _debug_line(jdns_session_t *s, const char *format, ...);
+
 
 static unsigned char _hex_nibble(unsigned char c)
 {
@@ -111,13 +109,11 @@ static jdns_string_t *_make_printable_str(const jdns_string_t *str)
     return _make_printable(str->data, str->size);
 }
 
-static jdns_string_t *_make_printable_cstr(const char *str)
-{
+jdns_string_t *_make_printable_cstr(const char *str){
     return _make_printable((const unsigned char *)str, strlen(str));
 }
 
-static unsigned char *_fix_input(const unsigned char *in)
-{
+unsigned char *_fix_input(const unsigned char *in){
     unsigned char *out;
     int len;
 
@@ -145,8 +141,7 @@ static unsigned char *_fix_input(const unsigned char *in)
     return out;
 }
 
-static const char *_qtype2str(int qtype)
-{
+const char *_qtype2str(int qtype){
     const char *str;
     switch(qtype)
     {
@@ -174,8 +169,7 @@ static int _cmp_rdata(const jdns_rr_t *a, const jdns_rr_t *b)
     return 1;
 }
 
-static int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b)
-{
+int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b){
     if(a->type != b->type)
         return 0;
     if(!jdns_domain_cmp(a->owner, b->owner))
@@ -228,8 +222,7 @@ static int _cmp_rr(const jdns_rr_t *a, const jdns_rr_t *b)
     return 1;
 }
 
-static jdns_response_t *_packet2response(const jdns_packet_t *packet, const unsigned char *qname, int qtype, int classmask)
-{
+jdns_response_t *_packet2response(const jdns_packet_t *packet, const unsigned char *qname, int qtype, int classmask){
     int n;
     jdns_response_t *r;
 
@@ -313,8 +306,7 @@ static void _print_hexdump_line(jdns_session_t *s, const unsigned char *buf, int
     _debug_line(s, "  %s", line);
 }
 
-static void _print_hexdump(jdns_session_t *s, const unsigned char *buf, int size)
-{
+void _print_hexdump(jdns_session_t *s, const unsigned char *buf, int size){
     int n;
     int lines;
     int len;
@@ -347,8 +339,7 @@ static void _print_packet_resources(jdns_session_t *s, const jdns_list_t *reslis
     }
 }
 
-static void _print_packet(jdns_session_t *s, const jdns_packet_t *packet)
-{
+void _print_packet(jdns_session_t *s, const jdns_packet_t *packet){
     _debug_line(s, "Packet:");
     _debug_line(s, "  id:   %d", packet->id);
     _debug_line(s, "  opts: qr:%d, opcode:%d, aa:%d, tc:%d, rd:%d, ra:%d, z:%d, ad:%d, cd:%d, rcode:%d",
@@ -490,8 +481,7 @@ static void _print_rr(jdns_session_t *s, const jdns_rr_t *rr, const unsigned cha
     jdns_string_delete(ownerstr);
 }
 
-static void _print_records(jdns_session_t *s, const jdns_response_t *r, const unsigned char *owner)
-{
+void _print_records(jdns_session_t *s, const jdns_response_t *r, const unsigned char *owner){
     int n;
     _debug_line(s, "Records:");
     _debug_line(s, "  Answer Records: %d", r->answerCount);
@@ -531,16 +521,9 @@ void jdns_event_delete(jdns_event_t *e)
 //----------------------------------------------------------------------------
 // jdns - internal types
 //----------------------------------------------------------------------------
-typedef struct list_item
-{
-    void (*dtor)(void *);
-} list_item_t;
+/* list_item_t declared in jdns_core_p.h */
 
-typedef struct list
-{
-    int count;
-    list_item_t **item;
-} list_t;
+/* list_t declared in jdns_core_p.h */
 
 static list_t *list_new()
 {
@@ -562,8 +545,7 @@ static void list_delete(list_t *l)
     jdns_free(l);
 }
 
-static void list_insert(list_t *l, void *item, int pos)
-{
+void list_insert(list_t *l, void *item, int pos){
     list_item_t *i = (list_item_t *)item;
     if(!l->item)
         l->item = (list_item_t **)malloc(sizeof(list_item_t *));
@@ -577,8 +559,7 @@ static void list_insert(list_t *l, void *item, int pos)
     ++l->count;
 }
 
-static void list_remove(list_t *l, void *item)
-{
+void list_remove(list_t *l, void *item){
     int n;
     list_item_t *i = (list_item_t *)item;
     int pos = -1;
@@ -609,18 +590,19 @@ static void list_remove(list_t *l, void *item)
 
 typedef struct name_server
 {
-    void (*dtor)(struct name_server *);
+    void (*dtor)(void *);
     int id;
     jdns_address_t *address;
     int port;
 } name_server_t;
 
 static void name_server_delete(name_server_t *ns);
+static void name_server_delete_generic(void *p) { name_server_delete((name_server_t *)p); }
 
 static name_server_t *name_server_new()
 {
     name_server_t *ns = alloc_type(name_server_t);
-    ns->dtor = name_server_delete;
+    ns->dtor = name_server_delete_generic;
     ns->address = 0;
     return ns;
 }
@@ -678,71 +660,15 @@ void _intarray_remove(int **array, int *count, int pos)
     }
 }
 
-typedef struct query
-{
-    void (*dtor)(struct query *);
-
-    int id;
-
-    // user request ids
-    int req_ids_count;
-    int *req_ids;
-
-    // packet id
-    int dns_id;
-
-    // what we are looking up
-    unsigned char *qname;
-    int qtype;
-
-    // how many transmission attempts we have done.  note this
-    //  is not actually how many packets have been sent, since
-    //  it is possible for the first transmission to send many
-    //  at once.  this variable lets us decide when to give up.
-    //  (idea taken from qdns).
-    // set to -1 to deactivate (stop sending packets)
-    int step;
-
-    // which nameservers we've tried (stored as a list of ids)
-    int servers_tried_count;
-    int *servers_tried;
-
-    // which servers we shouldn't try again
-    int servers_failed_count;
-    int *servers_failed;
-
-    // flag to indicate whether or not we've tried all available
-    //  nameservers already.  this means that all future
-    //  transmissions are likely repeats, and should be slowed
-    //  down.
-    int retrying;
-
-    // flag to indicate if we've received nxdomain as an error so far
-    int nxdomain;
-
-    // holds a timeout for the next step (time_start == -1 means no timer)
-    int time_start;
-    int time_next;
-
-    // whether or not to look in the cache for this query
-    int trycache;
-
-    // cname subquerying.  only cname_parent or cname_child may be set,
-    //  never both.
-    int cname_chain_count;
-    struct query *cname_parent;
-    struct query *cname_child;
-
-    // accumulates known multicast records to prevent duplicates
-    jdns_response_t *mul_known;
-} query_t;
+/* query_t declared in jdns_core_p.h */
 
 void query_delete(query_t *q);
+static void query_delete_generic(void *p) { query_delete((query_t *)p); }
 
 query_t *query_new()
 {
     query_t *q = alloc_type(query_t);
-    q->dtor = query_delete;
+    q->dtor = query_delete_generic;
     q->req_ids_count = 0;
     q->req_ids = 0;
     q->qname = 0;
@@ -751,6 +677,7 @@ query_t *query_new()
     q->servers_failed_count = 0;
     q->servers_failed = 0;
     q->nxdomain = 0;
+    q->async_inflight = 0;
     q->cname_chain_count = 0;
     q->cname_parent = 0;
     q->cname_child = 0;
@@ -852,7 +779,7 @@ void query_name_server_gone(query_t *q, int ns_id)
 
 typedef struct datagram
 {
-    void (*dtor)(struct datagram *);
+    void (*dtor)(void *);
     int handle;
     jdns_address_t *dest_address;
     int dest_port;
@@ -861,18 +788,18 @@ typedef struct datagram
 
     // query association
     query_t *query;
-    int query_send_type; // 0 == normal, 1 == first step send-all
 
     // name server association
     int ns_id;
 } datagram_t;
 
 void datagram_delete(datagram_t *a);
+static void datagram_delete_generic(void *p) { datagram_delete((datagram_t *)p); }
 
 datagram_t *datagram_new()
 {
     datagram_t *a = alloc_type(datagram_t);
-    a->dtor = datagram_delete;
+    a->dtor = datagram_delete_generic;
     a->dest_address = 0;
     a->data = 0;
     a->size = 0;
@@ -892,7 +819,7 @@ void datagram_delete(datagram_t *a)
 
 typedef struct cache_item
 {
-    void (*dtor)(struct cache_item *);
+    void (*dtor)(void *);
     unsigned char *qname;
     int qtype;
     int time_start;
@@ -901,11 +828,12 @@ typedef struct cache_item
 } cache_item_t;
 
 void cache_item_delete(cache_item_t *e);
+static void cache_item_delete_generic(void *p) { cache_item_delete((cache_item_t *)p); }
 
 cache_item_t *cache_item_new()
 {
     cache_item_t *a = alloc_type(cache_item_t);
-    a->dtor = cache_item_delete;
+    a->dtor = cache_item_delete_generic;
     a->qname = 0;
     a->record = 0;
     return a;
@@ -921,18 +849,15 @@ void cache_item_delete(cache_item_t *a)
     jdns_free(a);
 }
 
-typedef struct event
-{
-    void (*dtor)(struct event *);
-    jdns_event_t *event;
-} event_t;
+/* event_t declared in jdns_core_p.h */
 
 void event_delete(event_t *e);
+static void event_delete_generic(void *p) { event_delete((event_t *)p); }
 
 event_t *event_new()
 {
     event_t *e = alloc_type(event_t);
-    e->dtor = event_delete;
+    e->dtor = event_delete_generic;
     e->event = 0;
     return e;
 }
@@ -945,23 +870,15 @@ void event_delete(event_t *e)
     jdns_free(e);
 }
 
-typedef struct published_item
-{
-    void (*dtor)(struct published_item *);
-    int id;
-    int mode;
-    unsigned char *qname;
-    int qtype;
-    mdnsdr rec;
-    jdns_rr_t *rr;
-} published_item_t;
+/* published_item_t declared in jdns_core_p.h */
 
 void published_item_delete(published_item_t *a);
+static void published_item_delete_generic(void *p) { published_item_delete((published_item_t *)p); }
 
 published_item_t *published_item_new()
 {
     published_item_t *a = alloc_type(published_item_t);
-    a->dtor = published_item_delete;
+    a->dtor = published_item_delete_generic;
     a->qname = 0;
     a->rec = 0;
     a->rr = 0;
@@ -981,42 +898,17 @@ void published_item_delete(published_item_t *a)
 //----------------------------------------------------------------------------
 // jdns
 //----------------------------------------------------------------------------
-struct jdns_session
-{
-    jdns_callbacks_t cb;
-    int mode;
-    int managed_unicast;
-    int shutdown;
-    int next_qid;
-    int next_req_id;
-    int last_time;
-    int next_timer;
-    int next_name_server_id;
-    int handle;
-    int handle_readable, handle_writable;
-    int port;
-    list_t *name_servers;
-    list_t *queries;
-    list_t *outgoing;
-    list_t *events;
-    list_t *cache;
-
-    // for blocking req_ids from reuse until user explicitly releases
-    int do_hold_req_ids;
-    int held_req_ids_count;
-    int *held_req_ids;
-
-    // mdns
-    mdnsd mdns;
-    list_t *published;
-    jdns_address_t *maddr;
-};
+/* Internal resolver session defined in jdns_core_p.h */
 
 jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
 {
-    jdns_session_t *s = alloc_type(jdns_session_t);
+    jdns_session_t *s;
+    if(!callbacks || !callbacks->time_now || !callbacks->rand_int || !callbacks->debug_line)
+        return 0;
+    s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
-    s->managed_unicast = 0;
+    s->async_unicast = 0;
+    s->initialized = 0;
     s->shutdown = 0;
     s->next_qid = 0;
     s->next_req_id = 1;
@@ -1049,7 +941,17 @@ void jdns_session_delete(jdns_session_t *s)
     if(!s)
         return;
     if(s->handle)
-        s->cb.transport_unbind(s, s->cb.app, s->handle);
+        s->datagram.transport_unbind(s, s->cb.app, s->handle);
+    if(s->async_unicast && s->async.cancel)
+    {
+        int i;
+        for(i = 0; i < s->queries->count; ++i)
+        {
+            query_t *q = (query_t *)s->queries->item[i];
+            if(q->async_inflight)
+                s->async.cancel(s, s->cb.app, q->id);
+        }
+    }
     list_delete(s->name_servers);
     list_delete(s->queries);
     list_delete(s->outgoing);
@@ -1069,25 +971,25 @@ void jdns_session_delete(jdns_session_t *s)
 }
 
 // declare some internal functions
-static int _callback_time_now(mdnsd d, void *arg);
-static int _callback_rand_int(mdnsd d, void *arg);
 
-static void _append_event(jdns_session_t *s, jdns_event_t *event);
-static void _append_event_and_hold_id(jdns_session_t *s, jdns_event_t *event);
+
+
+
+
 static void _remove_name_server_datagrams(jdns_session_t *s, int ns_id);
 static void _remove_query_datagrams(jdns_session_t *s, const query_t *q);
 
 static int _unicast_query(jdns_session_t *s, const unsigned char *name, int qtype);
 static void _unicast_cancel(jdns_session_t *s, query_t *q);
-static int _multicast_query(jdns_session_t *s, const unsigned char *name, int qtype);
-static void _multicast_cancel(jdns_session_t *s, int req_id);
-static int _multicast_publish(jdns_session_t *s, int mode, const jdns_rr_t *rr);
-static void _multicast_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rr);
-static void _multicast_cancel_publish(jdns_session_t *s, int id);
-static void _multicast_flush(jdns_session_t *s);
+
+
+
+
+
+
 
 static int jdns_step_unicast(jdns_session_t *s, int now);
-static int jdns_step_multicast(jdns_session_t *s, int now);
+
 
 static void _hold_req_id(jdns_session_t *s, int req_id)
 {
@@ -1137,8 +1039,7 @@ static int _int_wrap(int *src, int start)
 }
 
 // starts at 0
-static int get_next_qid(jdns_session_t *s)
-{
+int get_next_qid(jdns_session_t *s){
     int n, id;
     id = -1;
     while(id == -1)
@@ -1157,8 +1058,7 @@ static int get_next_qid(jdns_session_t *s)
 }
 
 // starts at 1
-static int get_next_req_id(jdns_session_t *s)
-{
+int get_next_req_id(jdns_session_t *s){
     int n, k, id;
     id = -1;
     while(id == -1)
@@ -1258,31 +1158,47 @@ static int get_next_name_server_id(jdns_session_t *s)
     return id;
 }
 
-int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port)
+int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                      const jdns_address_t *addr, int port)
 {
     int ret;
+    if(!s || s->initialized || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+       !callbacks->transport_read || !callbacks->transport_write)
+        return 0;
+    s->datagram = *callbacks;
     s->mode = 0;
-    ret = s->cb.transport_bind(s, s->cb.app, addr, port, 0);
+    ret = s->datagram.transport_bind(s, s->cb.app, addr, port, 0);
     if(ret <= 0)
         return 0;
     s->handle = ret;
     s->port = port;
+    s->initialized = 1;
     return 1;
 }
 
-void jdns_set_managed_unicast(jdns_session_t *s, int enabled)
+int jdns_init_async_unicast(jdns_session_t *s, const jdns_async_callbacks_t *callbacks)
 {
-    if(s->mode != 0)
-        return;
-
-    s->managed_unicast = enabled ? 1 : 0;
+    if(!s || s->initialized || !callbacks || !callbacks->send || !callbacks->cancel)
+        return 0;
+    s->async = *callbacks;
+    s->mode = 0;
+    s->async_unicast = 1;
+    s->initialized = 1;
+    return 1;
 }
 
-int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
+int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                        const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     int ret;
+    if(!s || s->initialized || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+       !callbacks->transport_read || !callbacks->transport_write)
+        return 0;
+    if(!maddr)
+        return 0;
+    s->datagram = *callbacks;
     s->mode = 1;
-    ret = s->cb.transport_bind(s, s->cb.app, addr, port, maddr);
+    ret = s->datagram.transport_bind(s, s->cb.app, addr, port, maddr);
     if(ret <= 0)
         return 0;
     s->handle = ret;
@@ -1291,6 +1207,7 @@ int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port,
 
     // class 1.  note: frame size is ignored by the jdns version of mdnsd
     s->mdns = mdnsd_new(0x0001, 1000, s->port, _callback_time_now, _callback_rand_int, s);
+    s->initialized = 1;
     return 1;
 }
 
@@ -1300,12 +1217,12 @@ void jdns_shutdown(jdns_session_t *s)
         s->shutdown = 1; // request shutdown
 }
 
-void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist)
+int jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist)
 {
     int n, k;
 
-    if(s->managed_unicast)
-        return;
+    if(s->async_unicast)
+        return 0;
 
     // removed?
     for(k = 0; k < s->name_servers->count; ++k)
@@ -1399,6 +1316,7 @@ void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist
             --n; // adjust position
         }
     }
+    return 1;
 }
 
 void jdns_probe(jdns_session_t *s)
@@ -1411,6 +1329,8 @@ void jdns_probe(jdns_session_t *s)
 
 int jdns_query(jdns_session_t *s, const unsigned char *name, int rtype)
 {
+    if(!s || !s->initialized || !name)
+        return -1;
     if(s->mode == 0)
         return _unicast_query(s, name, rtype);
     else
@@ -1484,16 +1404,21 @@ void jdns_cancel_query(jdns_session_t *s, int id)
 
 int jdns_publish(jdns_session_t *s, int mode, const jdns_rr_t *rr)
 {
+    if(!s || !s->initialized || s->mode != 1 || !rr)
+        return -1;
     return _multicast_publish(s, mode, rr);
 }
 
 void jdns_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rr)
 {
-    _multicast_update_publish(s, id, rr);
+    if(s && s->initialized && s->mode == 1 && rr)
+        _multicast_update_publish(s, id, rr);
 }
 
 void jdns_cancel_publish(jdns_session_t *s, int id)
 {
+    if(!s || !s->initialized || s->mode != 1)
+        return;
     _unhold_req_id(s, id);
 
     _remove_events(s, JDNS_EVENT_PUBLISH, id);
@@ -1505,6 +1430,8 @@ int jdns_step(jdns_session_t *s)
 {
     int now, passed;
     int ret;
+    if(!s || !s->initialized)
+        return 0;
 
     // session is shut down
     if(s->shutdown == 2)
@@ -1578,20 +1505,7 @@ void _debug_line(jdns_session_t *s, const char *format, ...)
     free(buf);
 }
 
-int _callback_time_now(mdnsd d, void *arg)
-{
-    jdns_session_t *s = (jdns_session_t *)arg;
-    (void)d;
-    // offset the time, mdnsd doesn't like starting at 0
-    return s->cb.time_now(s, s->cb.app) + 120 * 1000;
-}
-
-int _callback_rand_int(mdnsd d, void *arg)
-{
-    jdns_session_t *s = (jdns_session_t *)arg;
-    (void)d;
-    return s->cb.rand_int(s, s->cb.app);
-}
+/* mDNS clock and entropy adapters are in jdns_multicast.c */
 
 void _append_event(jdns_session_t *s, jdns_event_t *event)
 {
@@ -1636,6 +1550,99 @@ void _remove_query_datagrams(jdns_session_t *s, const query_t *q)
 }
 
 void _process_message(jdns_session_t *s, jdns_packet_t *p, int now, query_t *q, name_server_t *ns);
+
+/* Locate the one on-wire query belonging to the asynchronous transport.
+ * User-facing request IDs can share a query because JDNS deduplicates them. */
+static query_t *_find_async_query(jdns_session_t *s, int request_id)
+{
+    int i;
+    if(!s || !s->async_unicast || s->shutdown)
+        return 0;
+    for(i = 0; i < s->queries->count; ++i)
+    {
+        query_t *q = (query_t *)s->queries->item[i];
+        if(q->id == request_id && q->async_inflight)
+            return q;
+    }
+    return 0;
+}
+
+int jdns_async_fail(jdns_session_t *s, int request_id, int status)
+{
+    query_t *q = _find_async_query(s, request_id);
+    int k;
+    if(!q)
+        return 0;
+    if(status != JDNS_STATUS_ERROR && status != JDNS_STATUS_TIMEOUT)
+        status = JDNS_STATUS_ERROR;
+
+    q->async_inflight = 0;
+    for(k = 0; k < q->req_ids_count; ++k)
+    {
+        jdns_event_t *event = jdns_event_new();
+        event->type = JDNS_EVENT_RESPONSE;
+        event->id = q->req_ids[k];
+        event->status = status;
+        _append_event_and_hold_id(s, event);
+    }
+
+    if(q->cname_parent)
+    {
+        query_t *parent = q->cname_parent;
+        parent->cname_child = 0;
+        for(k = 0; k < parent->req_ids_count; ++k)
+        {
+            jdns_event_t *event = jdns_event_new();
+            event->type = JDNS_EVENT_RESPONSE;
+            event->id = parent->req_ids[k];
+            event->status = status;
+            _append_event_and_hold_id(s, event);
+        }
+        _remove_query_datagrams(s, parent);
+        list_remove(s->queries, parent);
+    }
+
+    _remove_query_datagrams(s, q);
+    list_remove(s->queries, q);
+    return 1;
+}
+
+int jdns_async_complete(jdns_session_t *s, int request_id,
+    const unsigned char *data, int size)
+{
+    query_t *q = _find_async_query(s, request_id);
+    jdns_packet_t *packet;
+    jdns_packet_question_t *question;
+
+    if(!q)
+        return 0;
+    if(!data || size < 12 || size > JDNS_UNICAST_IN_MAX ||
+       !jdns_packet_import(&packet, data, size))
+    {
+        jdns_async_fail(s, request_id, JDNS_STATUS_ERROR);
+        return 0;
+    }
+
+    /* Never accept an otherwise valid reply for a different request, even
+       if its 16-bit transaction ID was accidentally reused by the backend. */
+    question = packet->questions->count == 1
+        ? (jdns_packet_question_t *)packet->questions->item[0] : 0;
+    if(!packet->opts.qr || packet->id != q->dns_id ||
+       packet->qdcount != 1 || !question ||
+       question->qclass != 1 || question->qtype != q->qtype ||
+       !jdns_domain_cmp((const unsigned char *)question->qname->data, q->qname))
+    {
+        jdns_packet_delete(packet);
+        jdns_async_fail(s, request_id, JDNS_STATUS_ERROR);
+        return 0;
+    }
+
+    q->async_inflight = 0;
+    _process_message(s, packet, s->cb.time_now(s, s->cb.app), q, 0);
+    jdns_packet_delete(packet);
+    return 1;
+}
+
 
 // return 1 if 'q' should be deleted, 0 if not
 int _process_response(jdns_session_t *s, jdns_response_t *r, int nxdomain, int now, query_t *q);
@@ -1742,6 +1749,19 @@ int _unicast_query(jdns_session_t *s, const unsigned char *name, int qtype)
 
 void _unicast_cancel(jdns_session_t *s, query_t *q)
 {
+    /* An asynchronous transport is a request, not a datagram to leave
+       running for one minute to opportunistically warm the cache. */
+    if(s->async_unicast)
+    {
+        if(q->async_inflight)
+        {
+            q->async_inflight = 0;
+            s->async.cancel(s, s->cb.app, q->id);
+        }
+        _remove_query_datagrams(s, q);
+        list_remove(s->queries, q);
+        return;
+    }
     // didn't even do a step yet?  just remove it
     if(q->step == 0)
     {
@@ -1762,14 +1782,13 @@ void _unicast_cancel(jdns_session_t *s, query_t *q)
 }
 
 // returns 0 if the query cannot be encoded
-int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
+/* Assemble one DNS wire request. Shared by real UDP datagrams and native
+ * async request transports; neither transport is responsible for encoding. */
+static jdns_packet_t *_make_query_packet(jdns_session_t *s, query_t *q)
 {
-    jdns_packet_t *packet;
-    datagram_t *a;
-
-    packet = jdns_packet_new();
+    jdns_packet_t *packet = jdns_packet_new();
     packet->id = q->dns_id;
-    packet->opts.rd = recurse; // recursion desired
+    packet->opts.rd = 1;
     {
         jdns_packet_question_t *question = jdns_packet_question_new();
         question->qname = jdns_string_new();
@@ -1785,6 +1804,26 @@ int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int re
         jdns_packet_delete(packet);
         return 0;
     }
+    return packet;
+}
+
+static int _dispatch_async_query(jdns_session_t *s, query_t *q)
+{
+    jdns_packet_t *packet = _make_query_packet(s, q);
+    if(!packet)
+        return 0;
+    q->async_inflight = 1;
+    s->async.send(s, s->cb.app, q->id, packet->raw_data, packet->raw_size);
+    jdns_packet_delete(packet);
+    return 1;
+}
+
+int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns)
+{
+    jdns_packet_t *packet = _make_query_packet(s, q);
+    datagram_t *a;
+    if(!packet)
+        return 0;
 
     a = datagram_new();
     a->handle = s->handle;
@@ -1803,10 +1842,7 @@ int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int re
     a->data = jdns_copy_array(packet->raw_data, packet->raw_size);
     a->size = packet->raw_size;
     a->query = q;
-    a->query_send_type = query_send_type;
-
     jdns_packet_delete(packet);
-
     list_insert(s->outgoing, a, -1);
     return 1;
 }
@@ -1849,7 +1885,8 @@ int jdns_step_unicast(jdns_session_t *s, int now)
     }
 
     need_write = _unicast_do_writes(s, now);
-    need_read = _unicast_do_reads(s, now);
+    if(!s->async_unicast)
+        need_read = _unicast_do_reads(s, now);
 
     // calculate next timer (based on queries and cache)
     for(n = 0; n < s->queries->count; ++n)
@@ -1985,11 +2022,11 @@ int _unicast_do_writes(jdns_session_t *s, int now)
         giveup = 0;
 
         // Retry and nameserver selection belong to JDNS only for the
-        // classic unicast transport. A managed transport owns both.
-        if(!s->managed_unicast && q->step == 8)
+        // classic UDP unicast. A native async transport owns both.
+        if(!s->async_unicast && q->step == 8)
             giveup = 1;
 
-        if(!s->managed_unicast && s->name_servers->count == 0)
+        if(!s->async_unicast && s->name_servers->count == 0)
             giveup = 1;
 
         if(giveup)
@@ -2069,21 +2106,11 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             }
         }
 
-        if(s->managed_unicast)
+        if(s->async_unicast)
         {
-            // The transport receives one complete DNS request and owns
-            // routing, retry and failover until it produces a response.
-            already_sending = 0;
-            for(k = 0; k < s->outgoing->count; ++k)
-            {
-                datagram_t *a = (datagram_t *)s->outgoing->item[k];
-                if(a->query == q && a->query_send_type == 0)
-                {
-                    already_sending = 1;
-                    break;
-                }
-            }
-            if(!already_sending && !_queue_packet(s, q, 0, 1, 0))
+            // Native async transport receives a complete DNS request. No
+            // datagram/UDP destination or socket handle is instantiated.
+            if(!q->async_inflight && !_dispatch_async_query(s, q))
             {
                 // The query cannot be encoded (a label is too long, for
                 // example). Without a retry timer it would never finish.
@@ -2153,34 +2180,18 @@ int _unicast_do_writes(jdns_session_t *s, int now)
         for(k = 0; k < s->outgoing->count; ++k)
         {
             datagram_t *a = (datagram_t *)s->outgoing->item[k];
-            if(a->query == q && a->query_send_type == 0)
+            if(a->query == q)
             {
                 already_sending = 1;
                 break;
             }
         }
 
-        // send the query, with recursion desired, normal query_send_type
+        // Send a normal recursive unicast DNS query.
         if(!already_sending)
-            _queue_packet(s, q, ns, 1, 0);
+            _queue_packet(s, q, ns);
 
         query_add_server_tried(q, ns->id);
-
-        // if there is one query, then do a trick on the first step
-        /*if(s->queries->count == 1 && q->step == 0 && !q->retrying)
-        {
-            // query all other servers non-recursively
-            // note: if sending fails, there is no retry
-            for(k = 0; k < s->name_servers->count; ++k)
-            {
-                name_server_t *i = (name_server_t *)s->name_servers->item[k];
-                if(!query_server_tried(q, i->id))
-                {
-                    // last arg sets first-step query_send_type
-                    _queue_packet(s, q, i, 0, 1);
-                }
-            }
-        }*/
 
         // out of name servers?
         if(q->servers_tried_count == s->name_servers->count)
@@ -2213,7 +2224,7 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             _debug_line(s, "SEND managed (size=%d)", a->size);
         _print_hexdump(s, a->data, a->size);
 
-        ret = s->cb.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
+        ret = s->datagram.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
         if(ret == 0)
         {
             s->handle_writable = 0;
@@ -2321,7 +2332,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
         name_server_t *ns;
 
         addr = jdns_address_new();
-        ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
+        ret = s->datagram.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
 
         // no packet?
         if(ret == 0)
@@ -2331,10 +2342,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             break;
         }
 
-        if(s->managed_unicast)
-            _debug_line(s, "RECV managed (size=%d)", bufsize);
-        else
-            _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
+        _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
         _print_hexdump(s, buf, bufsize);
 
         if(!jdns_packet_import(&packet, buf, bufsize))
@@ -2372,7 +2380,7 @@ int _unicast_do_reads(jdns_session_t *s, int now)
             }
         }
 
-        if(q && !s->managed_unicast)
+        if(q)
         {
             // what name server did it come from?
             for(k = 0; k < s->name_servers->count; ++k)
@@ -2748,775 +2756,4 @@ int _process_response(jdns_session_t *s, jdns_response_t *r, int nxdomain, int n
     }
 
     return 1;
-}
-
-//----------------------------------------------------------------------------
-// jdns - multicast
-//----------------------------------------------------------------------------
-static jdns_rr_t *_mdnsda2rr(mdnsda a)
-{
-    jdns_rr_t *rr;
-
-    if(a->type == JDNS_RTYPE_ANY)
-        return 0;
-
-    // for AAAA, TXT and HINFO, run the raw rdata through jdns_rr's parser
-    if(a->type == JDNS_RTYPE_AAAA || a->type == JDNS_RTYPE_TXT || a->type == JDNS_RTYPE_HINFO)
-    {
-        jdns_packet_resource_t *pr = jdns_packet_resource_new();
-        pr->qname = jdns_string_new();
-        jdns_string_set_cstr(pr->qname, (const char *)a->name);
-        pr->qtype = a->type;
-        pr->qclass = 0x0001; // class is always 1 for us
-        if(a->ttl == 0)
-            pr->ttl = 0;
-        else
-            pr->ttl = a->real_ttl;
-        pr->rdata = jdns_copy_array(a->rdata, a->rdlen);
-        pr->rdlength = a->rdlen;
-
-        // we don't need a reference for these types
-        rr = jdns_rr_from_resource(pr, 0);
-    }
-    // else, pull the values out of 'a' directly
-    else
-    {
-        rr = jdns_rr_new();
-        rr->owner = _ustrdup(a->name);
-        rr->qclass = 0x0001; // class is always 1 for us
-        if(a->ttl == 0)
-            rr->ttl = 0;
-        else
-            rr->ttl = a->real_ttl;
-
-        switch(a->type)
-        {
-            case JDNS_RTYPE_A:
-            {
-                jdns_address_t *addr = jdns_address_new();
-                jdns_address_set_ipv4(addr, a->ip);
-                jdns_rr_set_A(rr, addr);
-                jdns_address_delete(addr);
-                break;
-            }
-            case JDNS_RTYPE_AAAA:
-            {
-                // covered earlier
-                break;
-            }
-            case JDNS_RTYPE_MX:
-            {
-                // don't care about MX
-                jdns_rr_delete(rr);
-                rr = 0;
-                break;
-            }
-            case JDNS_RTYPE_SRV:
-            {
-                jdns_rr_set_SRV(rr, a->rdname, a->srv.port, a->srv.priority, a->srv.weight);
-                break;
-            }
-            case JDNS_RTYPE_CNAME:
-            {
-                jdns_rr_set_CNAME(rr, a->rdname);
-                break;
-            }
-            case JDNS_RTYPE_PTR:
-            {
-                jdns_rr_set_PTR(rr, a->rdname);
-                break;
-            }
-            case JDNS_RTYPE_TXT:
-            {
-                // covered earlier
-                break;
-            }
-            case JDNS_RTYPE_HINFO:
-            {
-                // covered earlier
-                break;
-            }
-            case JDNS_RTYPE_NS:
-            {
-                // don't care about NS
-                jdns_rr_delete(rr);
-                rr = 0;
-                break;
-            }
-            default:
-            {
-                jdns_rr_set_record(rr, a->type, a->rdata, a->rdlen);
-                break;
-            }
-        }
-    }
-
-    return rr;
-}
-
-int _multicast_query_ans(mdnsda a, void *arg)
-{
-    int n;
-    jdns_session_t *s;
-    query_t *q;
-    jdns_response_t *r;
-    jdns_rr_t *rr;
-
-    s = (jdns_session_t *)arg;
-
-    // what query is this for?
-    q = 0;
-    for(n = 0; n < s->queries->count; ++n)
-    {
-        query_t *i = (query_t *)s->queries->item[n];
-        if((i->qtype == JDNS_RTYPE_ANY || i->qtype == a->type) && jdns_domain_cmp(i->qname, a->name))
-        {
-            q = i;
-            break;
-        }
-    }
-
-    // note: this can't happen, but we'll check anyway
-    if(!q)
-    {
-        _debug_line(s, "no such multicast query");
-        return 0;
-    }
-
-    rr = _mdnsda2rr(a);
-    if(!rr)
-        return 0;
-
-    // add/remove as a known
-    if(rr->ttl == 0)
-    {
-        for(n = 0; n < q->mul_known->answerCount; ++n)
-        {
-            jdns_rr_t *k = q->mul_known->answerRecords[n];
-            if(_cmp_rr(k, rr))
-            {
-                jdns_response_remove_answer(q->mul_known, n);
-                break;
-            }
-        }
-    }
-    else
-        jdns_response_append_answer(q->mul_known, rr);
-
-    r = jdns_response_new();
-    jdns_response_append_answer(r, rr);
-    jdns_rr_delete(rr);
-
-    // report event to any requests listening
-    for(n = 0; n < q->req_ids_count; ++n)
-    {
-        jdns_event_t *event;
-        event = jdns_event_new();
-        event->type = JDNS_EVENT_RESPONSE;
-        event->id = q->req_ids[n];
-        event->status = JDNS_STATUS_SUCCESS;
-        event->response = jdns_response_copy(r);
-        _append_event(s, event);
-    }
-
-    jdns_response_delete(r);
-    return 0;
-}
-
-query_t *_get_multicast_query(jdns_session_t *s, const unsigned char *qname, int qtype)
-{
-    int n;
-    query_t *q;
-    jdns_string_t *str;
-
-    // check for existing queries
-    for(n = 0; n < s->queries->count; ++n)
-    {
-        q = (query_t *)s->queries->item[n];
-        if(jdns_domain_cmp(q->qname, qname) && q->qtype == qtype)
-        {
-            str = _make_printable_cstr((const char *)q->qname);
-            _debug_line(s, "[%d] reusing query for: [%s] [%s]", q->id, _qtype2str(qtype), str->data);
-            jdns_string_delete(str);
-            return q;
-        }
-    }
-
-    q = query_new();
-    q->id = get_next_qid(s);
-    q->qname = _ustrdup(qname);
-    q->qtype = qtype;
-    q->step = 0;
-    q->mul_known = jdns_response_new();
-    list_insert(s->queries, q, -1);
-
-    str = _make_printable_cstr((const char *)q->qname);
-    _debug_line(s, "[%d] querying: [%s] [%s]", q->id, _qtype2str(qtype), str->data);
-    jdns_string_delete(str);
-    return q;
-}
-
-int _multicast_query(jdns_session_t *s, const unsigned char *name, int qtype)
-{
-    unsigned char *qname;
-    query_t *q;
-    int req_id;
-    jdns_string_t *str;
-
-    str = _make_printable_cstr((const char *)name);
-    _debug_line(s, "query input: [%s]", str->data);
-    jdns_string_delete(str);
-
-    // add a dot to the end if needed
-    qname = _fix_input(name);
-
-    q = _get_multicast_query(s, qname, qtype);
-    req_id = get_next_req_id(s);
-    query_add_req_id(q, req_id);
-    free(qname);
-
-    // start the mdnsd_query if necessary
-    if(q->step == 0)
-    {
-        q->step = 1;
-        mdnsd_query(s->mdns, (char *)q->qname, q->qtype, _multicast_query_ans, s);
-    }
-    else
-    {
-        int n;
-
-        // report the knowns
-        for(n = 0; n < q->mul_known->answerCount; ++n)
-        {
-            const jdns_rr_t *rr;
-            jdns_response_t *r;
-            jdns_event_t *event;
-
-            rr = q->mul_known->answerRecords[n];
-            r = jdns_response_new();
-            jdns_response_append_answer(r, rr);
-
-            event = jdns_event_new();
-            event->type = JDNS_EVENT_RESPONSE;
-            event->id = req_id;
-            event->status = JDNS_STATUS_SUCCESS;
-            event->response = r;
-            _append_event(s, event);
-        }
-    }
-    return req_id;
-}
-
-void _multicast_cancel(jdns_session_t *s, int req_id)
-{
-    int n;
-    for(n = 0; n < s->queries->count; ++n)
-    {
-        query_t *q = (query_t *)s->queries->item[n];
-        if(query_have_req_id(q, req_id))
-        {
-            query_remove_req_id(q, req_id);
-
-            // if no one else is depending on this request, then take action
-            if(q->req_ids_count == 0)
-            {
-                mdnsd_query(s->mdns, (char *)q->qname, q->qtype, NULL, 0);
-                list_remove(s->queries, q);
-            }
-            break;
-        }
-    }
-}
-
-void _multicast_pubresult(int result, char *name, int type, void *arg)
-{
-    jdns_session_t *s;
-    published_item_t *pub;
-    jdns_event_t *event;
-    int n;
-
-    s = (jdns_session_t *)arg;
-
-    // find the associated pub item
-    pub = 0;
-    for(n = 0; n < s->published->count; ++n)
-    {
-        published_item_t *i = (published_item_t *)s->published->item[n];
-        if(strcmp((char *)i->qname, name) == 0 && i->qtype == type)
-        {
-            pub = i;
-            break;
-        }
-    }
-
-    // note: this can't happen, but we'll check anyway
-    if(!pub)
-    {
-        _debug_line(s, "no such multicast published item");
-        return;
-    }
-
-    if(result == 1)
-    {
-        jdns_string_t *str = _make_printable_cstr(name);
-        _debug_line(s, "published name %s for type %d", str->data, type);
-        jdns_string_delete(str);
-
-        event = jdns_event_new();
-        event->type = JDNS_EVENT_PUBLISH;
-        event->id = pub->id;
-        event->status = JDNS_STATUS_SUCCESS;
-        _append_event(s, event);
-    }
-    else
-    {
-        jdns_string_t *str = _make_printable_cstr(name);
-        _debug_line(s, "conflicting name detected %s for type %d", str->data, type);
-        jdns_string_delete(str);
-
-        event = jdns_event_new();
-        event->type = JDNS_EVENT_PUBLISH;
-        event->id = pub->id;
-        event->status = JDNS_STATUS_CONFLICT;
-        _append_event_and_hold_id(s, event);
-
-        // remove the item
-        list_remove(s->published, pub);
-    }
-}
-
-static jdns_string_t *_create_text(const jdns_stringlist_t *texts)
-{
-    jdns_string_t *out;
-    int n;
-    int total;
-    unsigned char *buf;
-
-    buf = 0;
-    total = 0;
-    for(n = 0; n < texts->count; ++n)
-        total += texts->item[n]->size + 1;
-    if(total > 0)
-    {
-        int at = 0;
-        buf = (unsigned char *)malloc(total);
-        for(n = 0; n < texts->count; ++n)
-        {
-            unsigned int len = texts->item[n]->size;
-            buf[at++] = len;
-            memcpy(buf + at, texts->item[n]->data, len);
-            at += len;
-        }
-    }
-
-    out = jdns_string_new();
-    if(buf)
-    {
-        out->data = buf;
-        out->size = total;
-    }
-    else
-        jdns_string_set_cstr(out, "");
-    return out;
-}
-
-static void _publish_applyrr_unknown(jdns_session_t *s, mdnsdr r, const jdns_rr_t *rr)
-{
-    // for unsupported/unknown, just take the rdata
-    // note: for this to work, the app must explicitly set the rdata.
-    //   if the record is MX or some other known but unsupported record
-    //   type, setting the known fields is not enough
-    mdnsd_set_raw(s->mdns, r, (char *)rr->rdata, rr->rdlength);
-}
-
-static int _publish_applyrr(jdns_session_t *s, mdnsdr r, const jdns_rr_t *rr)
-{
-    if(!rr->haveKnown)
-    {
-        _publish_applyrr_unknown(s, r, rr);
-        return 1;
-    }
-
-    // jdns_mdnsd supports: A, AAAA, SRV, CNAME, PTR, TXT, and HINFO
-    switch(rr->type)
-    {
-        case JDNS_RTYPE_A:
-        {
-            unsigned long int ip_net = htonl(rr->data.address->addr.v4);
-            mdnsd_set_raw(s->mdns, r, (char *)&ip_net, 4);
-            break;
-        }
-        case JDNS_RTYPE_AAAA:
-        {
-            mdnsd_set_raw(s->mdns, r, (char *)rr->data.address->addr.v6, 16);
-            break;
-        }
-        case JDNS_RTYPE_SRV:
-        {
-            mdnsd_set_srv(s->mdns, r, rr->data.server->priority, rr->data.server->weight, rr->data.server->port, (char *)rr->data.server->name);
-            break;
-        }
-        case JDNS_RTYPE_CNAME:
-        {
-            mdnsd_set_host(s->mdns, r, (char *)rr->data.name);
-            break;
-        }
-        case JDNS_RTYPE_PTR:
-        {
-            mdnsd_set_host(s->mdns, r, (char *)rr->data.name);
-            break;
-        }
-        case JDNS_RTYPE_TXT:
-        {
-            jdns_string_t *out = _create_text(rr->data.texts);
-            mdnsd_set_raw(s->mdns, r, (char *)out->data, out->size);
-            jdns_string_delete(out);
-            break;
-        }
-        case JDNS_RTYPE_HINFO:
-        {
-            jdns_string_t *out;
-            jdns_stringlist_t *list;
-
-            list = jdns_stringlist_new();
-            jdns_stringlist_append(list, rr->data.hinfo.cpu);
-            jdns_stringlist_append(list, rr->data.hinfo.os);
-            out = _create_text(list);
-            jdns_stringlist_delete(list);
-
-            mdnsd_set_raw(s->mdns, r, (char *)out->data, out->size);
-            jdns_string_delete(out);
-            break;
-        }
-        default:
-        {
-            _publish_applyrr_unknown(s, r, rr);
-            break;
-        }
-    }
-
-    return 1;
-}
-
-static void report_published(jdns_session_t *s, published_item_t *pub)
-{
-    jdns_event_t *event;
-    jdns_string_t *str;
-
-    str = _make_printable_cstr((char *)pub->qname);
-    _debug_line(s, "published name %s for type %d", str->data, pub->qtype);
-    jdns_string_delete(str);
-
-    event = jdns_event_new();
-    event->type = JDNS_EVENT_PUBLISH;
-    event->id = pub->id;
-    event->status = JDNS_STATUS_SUCCESS;
-    _append_event(s, event);
-}
-
-int _multicast_publish(jdns_session_t *s, int mode, const jdns_rr_t *rr)
-{
-    mdnsdr r;
-    published_item_t *pub;
-    int next_id;
-    jdns_event_t *event;
-    int n;
-
-    r = 0;
-    next_id = get_next_req_id(s);
-
-    // see if we have an item with this name+type combination already
-    pub = 0;
-    for(n = 0; n < s->published->count; ++n)
-    {
-        published_item_t *i = (published_item_t *)s->published->item[n];
-        if(i->qtype == rr->type && jdns_domain_cmp(i->qname, rr->owner))
-        {
-            pub = i;
-            break;
-        }
-    }
-    if(pub)
-        goto error;
-
-    if(!jdns_rr_verify(rr))
-        goto error;
-
-    if(mode == JDNS_PUBLISH_UNIQUE)
-        r = mdnsd_unique(s->mdns, (char *)rr->owner, rr->type, rr->ttl, _multicast_pubresult, s);
-    else
-        r = mdnsd_shared(s->mdns, (char *)rr->owner, rr->type, rr->ttl);
-
-    if(!_publish_applyrr(s, r, rr))
-        goto error;
-
-    pub = published_item_new();
-    pub->id = next_id;
-    pub->mode = mode;
-    pub->qname = _ustrdup(rr->owner);
-    pub->qtype = rr->type;
-    pub->rec = r;
-    pub->rr = jdns_rr_copy(rr);
-    list_insert(s->published, pub, -1);
-
-    // mdnsd doesn't report publish events for shared, so do that here
-    if(mode == JDNS_PUBLISH_SHARED)
-        report_published(s, pub);
-
-    return pub->id;
-
-error:
-    _debug_line(s, "attempt to publish record, malformed, unsupported, or duplicate type");
-
-    if(r)
-    {
-        // don't publish
-        mdnsd_done(s->mdns, r);
-    }
-
-    // send an error to the app
-    event = jdns_event_new();
-    event->type = JDNS_EVENT_PUBLISH;
-    event->id = next_id;
-    event->status = JDNS_STATUS_ERROR;
-    _append_event_and_hold_id(s, event);
-
-    return next_id;
-}
-
-void _multicast_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rr)
-{
-    mdnsdr r;
-    published_item_t *pub;
-    int n;
-
-    pub = 0;
-    for(n = 0; n < s->published->count; ++n)
-    {
-        published_item_t *i = (published_item_t *)s->published->item[n];
-        if(i->id == id)
-        {
-            pub = i;
-            break;
-        }
-    }
-    if(!pub)
-        return;
-
-    r = pub->rec;
-
-    // expire existing record.  this is mostly needed for shared records
-    //   since unique records already have the cache flush bit and that
-    //   should achieve the same result.  however, since Apple expires
-    //   unique records before updates, so will we.
-    mdnsd_done(s->mdns, r);
-    if(pub->mode == JDNS_PUBLISH_UNIQUE)
-        r = mdnsd_unique(s->mdns, (char *)pub->rr->owner, pub->rr->type, rr->ttl, _multicast_pubresult, s);
-    else
-        r = mdnsd_shared(s->mdns, (char *)pub->rr->owner, pub->rr->type, rr->ttl);
-    pub->rec = r;
-
-    if(!_publish_applyrr(s, r, rr))
-    {
-        _debug_line(s, "attempt to update_publish an unsupported type");
-        return;
-    }
-}
-
-void _multicast_cancel_publish(jdns_session_t *s, int id)
-{
-    int n;
-    for(n = 0; n < s->published->count; ++n)
-    {
-        published_item_t *i = (published_item_t *)s->published->item[n];
-        if(i->id == id)
-        {
-            mdnsd_done(s->mdns, i->rec);
-            list_remove(s->published, i);
-            break;
-        }
-    }
-}
-
-void _multicast_flush(jdns_session_t *s)
-{
-    int n;
-
-    // to flush, we make like our queries and published items are all new.
-    // we'll do this by destroying/creating the mdnsd object again (so it
-    // is fresh) and then reapply all queries and published items to it.
-
-    // start over with mdnsd
-    mdnsd_free(s->mdns);
-    s->mdns = mdnsd_new(0x0001, 1000, s->port, _callback_time_now, _callback_rand_int, s);
-
-    // attempt to publish again
-    for(n = 0; n < s->published->count; ++n)
-    {
-        published_item_t *i;
-        mdnsdr r;
-
-        i = (published_item_t *)s->published->item[n];
-        if(i->mode == JDNS_PUBLISH_UNIQUE)
-            r = mdnsd_unique(s->mdns, (char *)i->rr->owner, i->rr->type, i->rr->ttl, _multicast_pubresult, s);
-        else
-            r = mdnsd_shared(s->mdns, (char *)i->rr->owner, i->rr->type, i->rr->ttl);
-        _publish_applyrr(s, r, i->rr);
-        i->rec = r;
-    }
-
-    // restore the queries
-    for(n = 0; n < s->queries->count; ++n)
-    {
-        query_t *q = (query_t *)s->queries->item[n];
-
-        // issue the query
-        mdnsd_query(s->mdns, (char *)q->qname, q->qtype, _multicast_query_ans, s);
-    }
-}
-
-int jdns_step_multicast(jdns_session_t *s, int now)
-{
-    int need_read, need_write, smallest_time;
-    struct mytimeval *tv;
-    jdns_packet_t *packet;
-    int flags;
-
-    // not used
-    (void)now;
-
-    need_read = 0;
-    need_write = 0;
-
-    if(s->shutdown == 1)
-        mdnsd_shutdown(s->mdns);
-
-    while(1)
-    {
-        jdns_address_t *addr;
-        unsigned short int port;
-        int ret;
-        unsigned char *buf;
-        int buf_len;
-
-        if(!mdnsd_out(s->mdns, &packet, &addr, &port))
-            break;
-
-        if(!s->handle_writable)
-        {
-            need_write = 1;
-            jdns_address_delete(addr);
-            break;
-        }
-
-        if(!jdns_packet_export(packet, JDNS_UDP_MUL_OUT_MAX))
-        {
-            _debug_line(s, "outgoing packet export error, not sending");
-            jdns_packet_delete(packet);
-            continue;
-        }
-
-        buf = packet->raw_data;
-        buf_len = packet->raw_size;
-
-        // multicast
-        if(!addr)
-        {
-            addr = jdns_address_copy(s->maddr);
-            port = s->port;
-        }
-
-        _debug_line(s, "SEND %s:%d (size=%d)", addr->c_str, port, buf_len);
-        _print_hexdump(s, buf, buf_len);
-
-        ret = s->cb.transport_write(s, s->cb.app, s->handle, addr, port, buf, buf_len);
-
-        jdns_address_delete(addr);
-        jdns_packet_delete(packet);
-
-        // if we can't write the packet, oh well
-        if(ret == 0)
-        {
-            s->handle_writable = 0;
-            need_write = 1;
-            break;
-        }
-    }
-
-    if(s->shutdown == 1)
-    {
-        jdns_event_t *event = jdns_event_new();
-        event->type = JDNS_EVENT_SHUTDOWN;
-        _append_event(s, event);
-        s->shutdown = 2;
-        return 0;
-    }
-
-    // let's always ask for reads, just so the user doesn't have to
-    //  worry about what should happen to incoming packets otherwise
-    need_read = 1;
-
-    if(s->handle_readable)
-    {
-        while(1)
-        {
-            unsigned char buf[JDNS_UDP_MUL_IN_MAX];
-            int bufsize = JDNS_UDP_MUL_IN_MAX;
-            int ret;
-            jdns_address_t *addr;
-            int port;
-            jdns_response_t *r;
-
-            addr = jdns_address_new();
-            ret = s->cb.transport_read(s, s->cb.app, s->handle, addr, &port, buf, &bufsize);
-
-            // no packet?
-            if(ret == 0)
-            {
-                s->handle_readable = 0;
-                jdns_address_delete(addr);
-                break;
-            }
-
-            _debug_line(s, "RECV %s:%d (size=%d)", addr->c_str, port, bufsize);
-            _print_hexdump(s, buf, bufsize);
-
-            if(!jdns_packet_import(&packet, buf, bufsize))
-            {
-                _debug_line(s, "error parsing packet / too large");
-
-                jdns_address_delete(addr);
-                continue;
-            }
-
-            _print_packet(s, packet);
-
-            r = _packet2response(packet, 0, 0, 0x7fff);
-            _print_records(s, r, 0);
-
-            mdnsd_in(s->mdns, packet, r, addr, (unsigned short)port);
-
-            jdns_address_delete(addr);
-            jdns_packet_delete(packet);
-            jdns_response_delete(r);
-        }
-    }
-
-    tv = mdnsd_sleep(s->mdns);
-    smallest_time = tv->tv_sec * 1000 + tv->tv_usec / 1000;
-
-    flags = 0;
-    if(smallest_time != -1)
-    {
-        flags |= JDNS_STEP_TIMER;
-        s->next_timer = smallest_time;
-
-        // offset it a little bit, so that the user doesn't call
-        //  us too early, resulting in a no-op and another timer
-        //  of 1 millisecond.
-        s->next_timer += 2;
-    }
-    if(need_read || need_write)
-        flags |= JDNS_STEP_HANDLE;
-    return flags;
 }

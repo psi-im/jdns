@@ -1,97 +1,80 @@
-# Managed DNS transports in QJDns
+# JDNS native asynchronous unicast architecture
 
-## Existing implementation
+## Separation of concerns
 
-JDNS (C) owns DNS query encoding, response decoding, SRV/CNAME parsing, caching
-and TTLs. QJDns is the Qt event-loop integration. The old Qt transport was a
-private `QJDnsTransport` interface with UDP on desktop. Android implemented
-`ManagedUnicast`: requests are whole DNS wire packets, destination selection
-and retry policy move to the transport, and the transport returns whole DNS
-wire responses. Android already contains private DNS-over-TCP framing and
-DNS-over-TLS code for platform DNS.
+The DNS engine encodes/decodes packets, traverses CNAMEs, caches TTL records
+and coalesces identical lookups. Network transports perform routing, retries,
+timeouts and cancellation. There is never an implicit fallback to another DNS
+server, UDP or local system DNS after a native transport failure.
 
-No TCP or HTTP stack belongs in the JDNS C parser.
+**Datagram transport** (QJDnsDatagramTransport): real UDP socket binding,
+multicast membership, source/destination endpoint and packet I/O.
+**Query transport** (QJDnsQueryTransport): one complete DNS wire request,
+its corresponding response or typed error, and cancellation. No bind
+address, artificial socket handle, packet sender or destination parameter.
 
-## Proposed API and ownership
+## Native C API
 
-Each QJDns instance uses exactly one transport; **transport classes are
-named by the protocol/backend, not by the server's location**. There is no
-local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
+jdns_init_async_unicast(session) requires async_send(session, user, id, wire)
+and async_cancel(session, user, id). Network results arrive through
+jdns_async_complete(session, id, wire) or jdns_async_fail(session, id, status).
+Neither method creates a fabricated SERVFAIL DNS reply.
 
-- `QJDns::setTransport(QJDnsTransport *)` transfers ownership to QJDns **before**
-  calling `init()`; with no transport supplied, existing UDP/Android behavior
-  remains unchanged.
-- `QJDnsTcpTransport(server, port, QNetworkProxy)` uses DNS-over-TCP
-  (length-prefixed RFC 7766 frames). The caller supplies an explicit Qt
-  proxy, including `NoProxy` when direct TCP is intended.
-- `QJDnsDohTransport(endpoint, QNetworkAccessManager *manager = nullptr)`
-  performs RFC 8484 DNS-over-HTTPS. When the manager is omitted, the DoH
-  transport creates and **owns** its own QNAM (via QObject parenting).
-  When a manager is provided, the caller retains ownership and must keep it
-  alive for all pending queries. A default-created QNAM uses Qt's normal
-  network and proxy settings, not application-specific proxy configuration.
-  Applications requiring a particular SOCKS5/HTTP proxy must configure the
-  QNAM explicitly, either by supplying a preconfigured manager or via
-  `transport->networkAccessManager()->setProxy(proxy)` before querying.
-  The accessor does not transfer QNAM ownership. No DNS transport fallback
-  is attempted.
-- Both concrete transports reuse the request bookkeeping, timeout and
-  cancellation logic of `QJDnsExternalTransport` internally rather than
-  duplicating DNS parsing, packet IDs and retry logic.
-- `QJDnsExternalTransport` is a separate, **HTTP-agnostic** implementation.
-  It emits `queryRequested(requestId, dnsWirePacket)`. A caller may send that
-  packet using its own HTTP/TLS stack, libcurl, an application
-  network service or another transport, then report completion with
-  `completeRequest(requestId, responseWirePacket)` or failure with
-  `failRequest(requestId, message)`.
-  The caller's request IDs are separate from DNS transaction IDs and are not
-  reused. `requestCancelled(requestId)` asks the caller to abort the external
-  network job when a handle closes or a timeout occurs. The caller must keep
-  its backend alive and process callbacks on the transport's QObject thread.
-  The transport synthesizes a DNS SERVFAIL after failure/timeout (never local
-  DNS), and ignores late completion after cancellation.
-- The transport is scoped to a single QJDns session. Separate connections
-  can have separate DNS privacy policies rather than sharing a global resolver.
-- All three explicit transports are asynchronous, support concurrent wire queries, accept
-  cancellation by closing the handle, have per-request timeouts and deliver
-  responses back to JDNS.
+The id is the internal **wire-query ID**, distinct from consumer request IDs
+and the 16-bit DNS transaction ID. The engine validates all three relevant
+identifiers/question contents, ignoring stale or mismatched replies.
 
-## Privacy contract
+One cancelled consumer does not stop a coalesced query if others need it.
+Cancelling the final consumer aborts transport I/O immediately. Native async
+queries are not retained in the background just to populate the cache.
+Shutdown cancels any outstanding transport operations.
 
-1. When a proxy-specific resolver is selected, the caller supplies an explicit
-   proxy for **both** DNS and destination CONNECT (and supplies a configured
-   HTTP manager for DoH). The optional default-owned QNAM uses Qt's networking
-   defaults, so it is **not** appropriate for privacy-critical proxy profiles
-   unless the caller explicitly configures its proxy via `networkAccessManager()`
-   or the application's Qt-wide proxy configuration guarantees routing.
-   No fallback to a second DNS transport or system DNS is performed.
-2. The `QJDnsTcpTransport` calls QTcpSocket::connectToHost(server, port) with its
-   caller-supplied QNetworkProxy. To avoid local hostname resolution, use
-   SOCKS5/HTTP proxy configured for hostname CONNECT; verify this in a packet
-   capture on each supported Qt version.
-3. The `QJDnsDohTransport` endpoint must be HTTPS. Redirects are not followed.
-   If a manager is supplied, the application configures its proxy/TLS policy.
-   If none is supplied, a private QNAM is created and follows Qt's normal
-   network/proxy behavior. JDNS never performs a separate DNS lookup, but
-   an unproxied QNAM may resolve the DoH endpoint hostname locally.
-4. The external backend is responsible for routing and applying DoH HTTP
-   policy (HTTPS URL, Content-Type, TLS verification, proxy) or any equivalent
-   custom transport. JDNS cannot enforce those network properties for an
-   opaque external backend. It still enforces wire-response size/transaction ID
-   and provides no local DNS fallback.
-5. If the DNS transport fails or times out, deliver a matching SERVFAIL to
-   JDNS. Do not retry over UDP, system DNS, or a different network path.
-6. JDNS accepts decoded records **only** through its existing parser;
-   the new transport performs wire framing and lightweight ID matching.
+Native async submission encodes a DNS message and calls async_send directly:
+it never allocates a fake socket or enqueues a fake datagram.
 
-## Tests to retain
+## Qt API and ownership
 
-- DNS-over-TCP length-prefixed framing, including split frames.
-- DoH POST with RFC 8484 `application/dns-message` body/header.
-- Invalid DNS IDs, truncated answers, oversized frames, TCP close and timeout.
-- DoH HTTP failures, redirects and TLS errors propagate as DNS errors; no
-  implicit network fallback.
-- Concurrent queries and request cancellation (including late completions).
-- External backend uses the real JDNS DNS parser and propagates failures
-  without QNetworkAccessManager or any local-DNS fallback.
-- No multicast/Android regression and no required Qt GUI components.
+Call QJDns::setQueryTransport() before QJDns::init(Unicast). The resolver
+owns successfully injected transports. The transport implements startRequest,
+cancelRequest, and emits responseReady or failed. Callback completion must
+never synchronously reenter the JDNS stepping loop.
+
+QJDns::setDatagramTransport() is separately available for real datagram
+socket implementations. The platform's ordinary UDP/mDNS stack remains
+the default where appropriate. Android uses its network-aware system
+resolver and Private DNS through the native query interface.
+
+The included query transports are:
+- QJDnsTcpTransport: RFC 7766; explicit server, port and optional Qt proxy.
+- QJDnsHttpTransport: RFC 8484; caller-owned QNAM or default owned QNAM.
+- QJDnsExternalTransport: HTTP/TLS-agnostic asynchronous external backend.
+
+A default-created QNAM uses normal Qt proxy settings; it cannot infer
+per-connection proxy policy from an unrelated application component.
+Network failure or timeout does not trigger local DNS fallback.
+
+QJDns::setNameServers() explicitly returns false for query transports,
+because server selection belongs to the transport.
+
+## Regression coverage
+
+C tests (GCC and Clang, Debug and Release, without Qt): successful A,
+cache hit and expiry, CNAME success and child error, NXDOMAIN, two
+coalesced consumers, cancellation before dispatch and on last consumer,
+invalid and spoofed DNS responses, late/duplicate completion, typed
+timeout/network failure and cancellation on destruction.
+
+Qt tests: loopback UDP, TCP framing including fragmented replies, SOCKS5
+hostname CONNECT, RFC 8484 DoH, owned and external QNAM, HTTP errors,
+explicit external backend, timeout, malformed response and cancellation.
+
+Android CI must continue validating native resolver availability and
+Private DNS and network-binding paths. No mDNS API changes are required
+for the query transport split.
+
+## Remaining internal modularization
+
+Multicast-specific state and its real datagram callbacks still reside
+alongside unicast state within the C translation unit. Physically moving
+the mDNS engine into its own module remains a separate internal step.
+It must not reintroduce fake datagram semantics into query transports.

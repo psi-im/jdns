@@ -21,7 +21,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qjdns_transport.h"
+#include "qjdns_querytransport.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
 
@@ -29,7 +29,6 @@
 #include <QHostInfo>
 #include <QJniObject>
 #include <QNetworkProxy>
-#include <QQueue>
 #include <QSet>
 #include <QSslSocket>
 #include <QSocketNotifier>
@@ -217,11 +216,6 @@ quint16 dnsId(const QByteArray &packet)
         | static_cast<quint8>(packet[1]);
 }
 
-quint64 transactionKey(int handle, quint16 id)
-{
-    return (static_cast<quint64>(static_cast<quint32>(handle)) << 16) | id;
-}
-
 bool isTruncatedDnsResponse(const QByteArray &packet)
 {
     if(packet.size() < 4)
@@ -229,49 +223,7 @@ bool isTruncatedDnsResponse(const QByteArray &packet)
     return (static_cast<quint8>(packet[2]) & 0x02) != 0;
 }
 
-QByteArray makeServfail(const QByteArray &query)
-{
-    if(query.size() < 12)
-        return QByteArray();
 
-    int pos = 12;
-    bool questionComplete = false;
-    while(pos < query.size())
-    {
-        const quint8 labelLength = static_cast<quint8>(query[pos++]);
-        if(labelLength == 0)
-        {
-            questionComplete = true;
-            break;
-        }
-        if((labelLength & 0xc0) == 0xc0)
-        {
-            if(pos >= query.size())
-                return QByteArray();
-            ++pos;
-            questionComplete = true;
-            break;
-        }
-        if((labelLength & 0xc0) != 0 || pos + labelLength > query.size())
-            return QByteArray();
-        pos += labelLength;
-    }
-
-    if(!questionComplete || pos + 4 > query.size())
-        return QByteArray();
-
-    QByteArray response = query.left(pos + 4);
-    const quint16 queryFlags = (static_cast<quint16>(static_cast<quint8>(query[2])) << 8)
-        | static_cast<quint8>(query[3]);
-    const quint16 responseFlags = static_cast<quint16>(0x8000 | 0x0080 | 0x0002 | (queryFlags & 0x0100));
-    response[2] = static_cast<char>(responseFlags >> 8);
-    response[3] = static_cast<char>(responseFlags & 0xff);
-
-    for(int i = 6; i < 12; ++i)
-        response[i] = 0;
-
-    return response;
-}
 
 QByteArray frameDnsMessage(const QByteArray &packet)
 {
@@ -303,129 +255,57 @@ int createNetworkBoundStreamSocket(net_handle_t network, const QHostAddress &ser
     return fd;
 }
 
-class QJDnsAndroidTransportBase : public QJDnsTransport
+class QJDnsAndroidTransportBase : public QJDnsQueryTransport
 {
 public:
     explicit QJDnsAndroidTransportBase(QObject *parent)
-        : QJDnsTransport(parent)
+        : QJDnsQueryTransport(parent)
     {
     }
 
-    Capabilities capabilities() const override
+    void cancelRequest(int id) override
     {
-        return ManagedUnicast;
-    }
-
-    int open(const QHostAddress &, quint16, const QHostAddress &multicastAddress) override
-    {
-        if(!multicastAddress.isNull())
-            return 0;
-
-        const int handle = nextHandle_++;
-        handles_.insert(handle);
-        return handle;
-    }
-
-    void close(int handle) override
-    {
-        handles_.remove(handle);
-        cancelHandleRequests(handle);
-
-        auto queueIt = responses_.find(handle);
-        if(queueIt != responses_.end())
-        {
-            while(!queueIt->isEmpty())
-                outstanding_.remove(queueIt->dequeue().key);
-            responses_.erase(queueIt);
-        }
-    }
-
-    bool takeResponse(int handle, Packet *packet) override
-    {
-        auto it = responses_.find(handle);
-        if(it == responses_.end() || it->isEmpty())
-            return false;
-
-        QueuedResponse response = it->dequeue();
-        if(it->isEmpty())
-            responses_.erase(it);
-
-        outstanding_.remove(response.key);
-        *packet = response.packet;
-        return true;
+        if(!handles_.remove(id))
+            return;
+        cancelHandleRequests(id);
     }
 
 protected:
-    struct QueuedResponse
+    bool registerRequest(int id)
     {
-        quint64 key = 0;
-        Packet packet;
-    };
-
-    virtual void cancelHandleRequests(int handle) = 0;
-
-    bool canSubmit(int handle, const QByteArray &packet, quint64 *key)
-    {
-        if(!handles_.contains(handle) || packet.size() < 12)
+        if(handles_.contains(id))
             return false;
-
-        *key = transactionKey(handle, dnsId(packet));
-        if(outstanding_.contains(*key))
-            return false;
-
-        outstanding_.insert(*key);
+        handles_.insert(id);
         return true;
     }
 
-    bool isKnownHandle(int handle) const
-    {
-        return handles_.contains(handle);
-    }
+    virtual void cancelHandleRequests(int handle) = 0;
 
-    void removeOutstanding(quint64 key)
+    void queueResponse(int handle, const QByteArray &data)
     {
-        outstanding_.remove(key);
-    }
-
-    void queuePacketWritten()
-    {
-        QMetaObject::invokeMethod(this, [this]() { emit packetWritten(); }, Qt::QueuedConnection);
-    }
-
-    void queueReadyRead(int handle)
-    {
-        QMetaObject::invokeMethod(this, [this, handle]() {
-            if(handles_.contains(handle) && responses_.contains(handle) && !responses_[handle].isEmpty())
-                emit readyRead(handle);
+        if(!handles_.contains(handle))
+            return;
+        QMetaObject::invokeMethod(this, [this, handle, data]() {
+            // The consumer may cancel after the backend completed, before
+            // this event is delivered. Never emit a stale DNS response.
+            if(handles_.remove(handle))
+                emit responseReady(handle, data);
         }, Qt::QueuedConnection);
     }
 
-    void queueResponse(int handle, quint64 key, const QByteArray &data)
+    void queueFailure(int handle, const QString &reason)
     {
-        QueuedResponse response;
-        response.key = key;
-        response.packet.data = data;
-        responses_[handle].enqueue(response);
-        queueReadyRead(handle);
-    }
-
-    void queueFailure(int handle, quint64 key, const QByteArray &query, const QString &reason)
-    {
-        emit debugLine(reason);
-        const QByteArray response = makeServfail(query);
-        if(response.isEmpty())
-        {
-            outstanding_.remove(key);
+        if(!handles_.contains(handle))
             return;
-        }
-        queueResponse(handle, key, response);
+        const bool isTimeout = reason.contains(QStringLiteral("timed out"), Qt::CaseInsensitive);
+        QMetaObject::invokeMethod(this, [this, handle, reason, isTimeout]() {
+            if(handles_.remove(handle))
+                emit failed(handle, reason, isTimeout ? Timeout : NetworkError);
+        }, Qt::QueuedConnection);
     }
 
 private:
-    int nextHandle_ = 1;
     QSet<int> handles_;
-    QSet<quint64> outstanding_;
-    QHash<int, QQueue<QueuedResponse>> responses_;
 };
 
 class QJDnsAndroidResolverTransport : public QJDnsAndroidTransportBase
@@ -443,23 +323,22 @@ public:
             cancelTransaction(fd);
     }
 
-    SubmitResult submit(int handle, const QHostAddress &, quint16, const QByteArray &packet) override
+    void startRequest(int handle, const QByteArray &packet) override
     {
-        if(!isKnownHandle(handle))
-            return RetryLater;
+        if(!registerRequest(handle))
+            return;
         if(packet.size() < 12)
-            return Dropped;
+        {
+            queueFailure(handle, QStringLiteral("Invalid DNS request"));
+            return;
+        }
 
-        quint64 key = 0;
-        if(!canSubmit(handle, packet, &key))
-            return Dropped;
 
         const net_handle_t network = networkHandle(activeNetwork());
         if(network == 0)
         {
-            queueFailure(handle, key, packet, QStringLiteral("Android has no active network"));
-            queuePacketWritten();
-            return Submitted;
+            queueFailure(handle, QStringLiteral("Android has no active network"));
+            return;
         }
 
         AndroidResolverApi &api = resolverApi();
@@ -468,16 +347,13 @@ public:
                                  static_cast<size_t>(packet.size()), 0);
         if(fd < 0)
         {
-            queueFailure(handle, key, packet,
+            queueFailure(handle,
                          QStringLiteral("android_res_nsend failed (%1)").arg(fd));
-            queuePacketWritten();
-            return Submitted;
+            return;
         }
 
         auto *transaction = new Transaction;
         transaction->handle = handle;
-        transaction->key = key;
-        transaction->query = packet;
         transaction->notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
         transaction->timer = new QTimer(this);
         transaction->timer->setSingleShot(true);
@@ -492,8 +368,7 @@ public:
         });
         transaction->timer->start(SystemResolverTimeoutMs);
 
-        queuePacketWritten();
-        return Submitted;
+        return;
     }
 
 protected:
@@ -512,8 +387,6 @@ private:
     struct Transaction
     {
         int handle = 0;
-        quint64 key = 0;
-        QByteArray query;
         QSocketNotifier *notifier = nullptr;
         QTimer *timer = nullptr;
     };
@@ -545,13 +418,13 @@ private:
 
         if(size < 0)
         {
-            queueFailure(transaction->handle, transaction->key, transaction->query,
+            queueFailure(transaction->handle,
                          QStringLiteral("android_res_nresult failed (%1)").arg(size));
         }
         else
         {
             answer.resize(size);
-            queueResponse(transaction->handle, transaction->key, answer);
+            queueResponse(transaction->handle, answer);
         }
 
         delete transaction;
@@ -565,7 +438,7 @@ private:
 
         disposeTransaction(transaction);
         resolverApi().cancel(fd);
-        queueFailure(transaction->handle, transaction->key, transaction->query,
+        queueFailure(transaction->handle,
                      QStringLiteral("Android system DNS resolver timed out"));
         delete transaction;
     }
@@ -578,7 +451,6 @@ private:
 
         disposeTransaction(transaction);
         resolverApi().cancel(fd);
-        removeOutstanding(transaction->key);
         delete transaction;
     }
 
@@ -600,16 +472,19 @@ public:
             cancelTransaction(key);
     }
 
-    SubmitResult submit(int handle, const QHostAddress &, quint16, const QByteArray &packet) override
+    void startRequest(int handle, const QByteArray &packet) override
     {
-        if(!isKnownHandle(handle))
-            return RetryLater;
+        if(!registerRequest(handle))
+            return;
         if(packet.size() < 12)
-            return Dropped;
+        {
+            queueFailure(handle, QStringLiteral("Invalid DNS request"));
+            return;
+        }
 
-        quint64 key = 0;
-        if(!canSubmit(handle, packet, &key))
-            return Dropped;
+        // The resolver ID is unique within the session; no DNS header ID,
+        // synthetic socket handle, or second outstanding-key set is needed.
+        const quint64 key = static_cast<quint64>(static_cast<quint32>(handle));
 
         auto *transaction = new Transaction;
         transaction->handle = handle;
@@ -668,8 +543,7 @@ public:
             startNextServer(transaction);
         }
 
-        queuePacketWritten();
-        return Submitted;
+        return;
     }
 
 protected:
@@ -1045,14 +919,13 @@ private:
         delete transaction->timer;
         transaction->timer = nullptr;
         delete transaction;
-        queueResponse(handle, key, answer);
+        queueResponse(handle, answer);
     }
 
     void finishFailure(Transaction *transaction, const QString &reason)
     {
         const int handle = transaction->handle;
         const quint64 key = transaction->key;
-        const QByteArray query = transaction->query;
         if(transaction->lookupId != -1)
             QHostInfo::abortHostLookup(transaction->lookupId);
         cleanupAttempt(transaction);
@@ -1060,7 +933,7 @@ private:
         delete transaction->timer;
         transaction->timer = nullptr;
         delete transaction;
-        queueFailure(handle, key, query, reason);
+        queueFailure(handle, reason);
     }
 
     void cancelTransaction(quint64 key)
@@ -1074,7 +947,6 @@ private:
         cleanupAttempt(transaction);
         delete transaction->timer;
         transaction->timer = nullptr;
-        removeOutstanding(key);
         delete transaction;
     }
 
@@ -1083,7 +955,7 @@ private:
 
 } // namespace
 
-QJDnsTransport *qjdns_create_android_transport(QObject *parent)
+QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *parent)
 {
     const int sdk = QNativeInterface::QAndroidApplication::sdkVersion();
     if(sdk >= 29 && resolverApi().resolverAvailable())
@@ -1095,7 +967,7 @@ QJDnsTransport *qjdns_create_android_transport(QObject *parent)
 
 #else
 
-QJDnsTransport *qjdns_create_android_transport(QObject *)
+QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *)
 {
     return nullptr;
 }

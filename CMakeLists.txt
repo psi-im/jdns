@@ -137,7 +137,7 @@ endif()
 
 add_subdirectory(src)
 
-if(JDNS_BUILD_TESTS AND BUILD_QJDNS)
+if(JDNS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()

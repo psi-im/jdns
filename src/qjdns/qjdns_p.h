@@ -30,7 +30,8 @@
 #include <QElapsedTimer>
 #include <QStringList>
 
-class QJDnsTransport;
+class QJDnsDatagramTransport;
+class QJDnsQueryTransport;
 class QTimer;
 
 class SafeTimer : public QObject
@@ -82,7 +83,8 @@ public:
     QJDns *q;
     QJDns::Mode mode;
     jdns_session_t *sess;
-    QJDnsTransport *transport;
+    QJDnsDatagramTransport *transport;
+    QJDnsQueryTransport *queryTransport;
     bool shutting_down;
     SafeTimer stepTrigger, debugTrigger;
     SafeTimer stepTimeout;
@@ -105,7 +107,7 @@ public:
     ~Private();
     void cleanup();
     bool init(QJDns::Mode _mode, const QHostAddress &address);
-    void setNameServers(const QList<NameServer> &nslist);
+    bool setNameServers(const QList<NameServer> &nslist);
     void process();
     void processDebug();
     void doNextStep();
@@ -123,6 +125,8 @@ private:
     static int cb_time_now(jdns_session_t *, void *app);
     static int cb_rand_int(jdns_session_t *, void *);
     static void cb_debug_line(jdns_session_t *, void *app, const char *str);
+    static void cb_async_send(jdns_session_t *, void *app, int id, const unsigned char *data, int size);
+    static void cb_async_cancel(jdns_session_t *, void *app, int id);
     static int cb_transport_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
     static void cb_transport_unbind(jdns_session_t *, void *app, int handle);
     static int cb_transport_read(jdns_session_t *, void *app, int handle, jdns_address_t *addr, int *port, unsigned char *buf, int *bufsize);

@@ -21,21 +21,17 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qjdns_transport.h"
+#include "qjdns_datagramtransport.h"
 
 #include "qjdns_sock.h"
 
 #include <QHash>
 #include <QUdpSocket>
 
-#ifdef Q_OS_ANDROID
-QJDnsTransport *qjdns_create_android_transport(QObject *parent);
-#endif
-
-class QJDnsSocketTransport : public QJDnsTransport
+class QJDnsUdpTransport : public QJDnsDatagramTransport
 {
 public:
-    explicit QJDnsSocketTransport(QObject *parent) : QJDnsTransport(parent) {}
+    explicit QJDnsUdpTransport(QObject *parent) : QJDnsDatagramTransport(parent) {}
 
     int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) override
     {
@@ -135,16 +131,7 @@ private:
     QHash<int, QUdpSocket *> sockets_;
 };
 
-QJDnsTransport *qjdns_create_transport(QObject *parent, bool unicast)
+QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent)
 {
-#ifdef Q_OS_ANDROID
-    if(unicast)
-    {
-        if(QJDnsTransport *transport = qjdns_create_android_transport(parent))
-            return transport;
-    }
-#else
-    Q_UNUSED(unicast)
-#endif
-    return new QJDnsSocketTransport(parent);
+    return new QJDnsUdpTransport(parent);
 }

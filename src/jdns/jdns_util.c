@@ -193,6 +193,8 @@ void jdns_object_free(void *a)
 //----------------------------------------------------------------------------
 // jdns_list
 //----------------------------------------------------------------------------
+JDNS_OBJECT_ADAPTERS(jdns_list)
+
 jdns_list_t *jdns_list_new()
 {
     jdns_list_t *a = JDNS_OBJECT_NEW(jdns_list);
@@ -332,6 +334,8 @@ void jdns_list_remove_at(jdns_list_t *a, int pos)
 //----------------------------------------------------------------------------
 // jdns_string
 //----------------------------------------------------------------------------
+JDNS_OBJECT_ADAPTERS(jdns_string)
+
 jdns_string_t *jdns_string_new()
 {
     jdns_string_t *s = JDNS_OBJECT_NEW(jdns_string);

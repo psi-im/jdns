@@ -1,4 +1,14 @@
 cmake_minimum_required(VERSION 3.19)
+
+add_executable(jdns-native-async-test native_async.c)
+target_link_libraries(jdns-native-async-test PRIVATE JDns::JDns)
+add_test(NAME jdns-native-async COMMAND jdns-native-async-test)
+
+add_executable(jdns-multicast-test multicast.c)
+target_link_libraries(jdns-multicast-test PRIVATE JDns::JDns)
+add_test(NAME jdns-multicast COMMAND jdns-multicast-test)
+
+if(BUILD_QJDNS)
 find_package(Qt${JDNS_QT_MAJOR_VERSION} REQUIRED COMPONENTS Test)
 
 add_executable(qjdns-transport-test transports.cpp)
@@ -9,3 +19,4 @@ target_link_libraries(qjdns-transport-test PRIVATE
     Qt${JDNS_QT_MAJOR_VERSION}::Network
 )
 add_test(NAME qjdns-transports COMMAND qjdns-transport-test)
+endif()

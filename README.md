@@ -1,96 +1,171 @@
-### JDNS
+# JDNS
 
-Date: October 1st, 2005
-Author: Justin Karneges <justin@karneges.com>
+JDNS is an event-loop-friendly DNS library with a dependency-free C protocol
+engine and a Qt wrapper, **QJDns**, for Qt 5 and Qt 6. It supports traditional
+DNS resolution and multicast DNS (mDNS), including publishing records on the
+local network. Originally created by Justin Karneges in 2005, it is licensed
+under the MIT license.
 
-JDNS is a simple DNS implementation that can perform normal DNS queries
-of any record type (notably SRV), as well as Multicast DNS queries and
-advertising.  Multicast support is based on Jeremie Miller's "mdnsd"
-implementation.
+## What it can do
 
-For maximum flexibility, JDNS is written in C with no direct dependencies,
-and is licensed under the MIT license.  Your application must supply
-functionality to JDNS, such as UDP sending/receiving, via callbacks.
+| Capability | Details |
+| --- | --- |
+| Unicast DNS | Asynchronous queries, including A, AAAA, SRV, MX, TXT, PTR, CNAME and other DNS record types (unknown types can be handled as raw RDATA). |
+| DNS resolution engine | DNS wire encoding/decoding, CNAME traversal, TTL caching/expiration and coalescing of identical concurrent queries. |
+| Multicast DNS | mDNS queries, ongoing discovery, record publication, updates and conflict handling using the bundled `mdnsd` engine. |
+| UDP | Built-in datagram transport for conventional DNS and mDNS. |
+| DNS over TCP | `QJDnsTcpTransport` implements DNS-over-TCP framing (RFC 7766), with explicit Qt proxy configuration, including SOCKS5. |
+| DNS over HTTPS | `QJDnsHttpTransport` implements RFC 8484 using Qt Network. **HTTPS is required**; plain HTTP and redirects are rejected. Its `QNetworkAccessManager` may be supplied or internally owned. |
+| Custom backends | `QJDnsExternalTransport` passes complete DNS wire requests to an application-owned asynchronous backend (for example, a custom HTTP/TLS stack). |
+| Android DNS | A platform-specific backend uses the Android system resolver where available, taking account of the platform's network and Private DNS configuration; older Android versions use a fallback resolver implementation. |
+| Error and cancellation handling | Distinct transport failures/timeouts, per-request cancellation and no implicit fallback to a different DNS transport after an error. |
 
-For Qt users there is a wrapper available called QJDns. The project is built
-with CMake and supports Qt 5 and Qt 6. For example, a static Qt 6 build can be
-configured with:
+The C API supplies callbacks for the application's clock, randomness and
+network I/O; it has no Qt dependency. The Qt wrapper supplies the event-loop
+integration and the concrete transport implementations.
+
+**Scope:** JDNS is a DNS/mDNS building block, not a complete DNS-SD/Bonjour
+service-discovery framework. The application handles service browsing policy,
+search-domain expansion and selection between unicast DNS and `.local` mDNS.
+**DNS Push Notifications (RFC 8765) are not implemented.** Their planned,
+separate, session-oriented design is discussed in
+[docs/rfc8765-readiness.md](docs/rfc8765-readiness.md).
+
+## Build
+
+CMake 3.19 or newer is required. The following builds the C library, Qt 6
+wrapper and command-line utility (where supported):
 
 ```sh
-cmake -S . -B build \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DBUILD_QJDNS=ON \
-  -DJDNS_QT_MAJOR_VERSION=6
-cmake --build build
+cmake -S . -B build -DBUILD_QJDNS=ON -DJDNS_QT_MAJOR_VERSION=6
+cmake --build build --parallel
 ```
 
-The sample Qt-based command-line tool `jdns` is built by default on desktop
-platforms and can be disabled with `-DBUILD_JDNS_TOOL=OFF`.
+Set `JDNS_QT_MAJOR_VERSION=5` for Qt 5. Set `BUILD_QJDNS=OFF` to build
+only the C library, `BUILD_JDNS_TOOL=OFF` to omit the example CLI, or
+`BUILD_SHARED_LIBS=ON` to build shared libraries (static is the default).
 
-#### Features:
-* DNS client "stub" resolver
-* Can fetch any record type, but provides handy decoding for many
-    known types: A, AAAA, SRV, MX, TXT, etc.
-* Performs retries, caching/expiration, and CNAME following
-* Algorithm logic adapted from Q3Dns
-* Multicast queries
-* Multicast advertising
+To run the regression suite:
 
-#### Why?
-* Trolltech is phasing out the Qt DNS implementation, which in Qt 4 has
-  been relegated to the Qt3Support module.  A replacement was desired.
+```sh
+cmake -S . -B build -DJDNS_BUILD_TESTS=ON -DJDNS_QT_MAJOR_VERSION=6
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
 
-* While there are many DNS libraries available, at the time of this
-  writing it was (and still may be) hard to find one that satisfies
-  three essential conditions: cross-platform friendliness (and this
-  includes Windows 9x!), the ability to integrate into existing
-  eventloops, sensible licensing (ie, not GPL).
+You can install the libraries and CMake package configuration with
+`cmake --install build`.
 
-#### How to use:
-* Prepare callbacks and call jdns_session_new()
-* Call jdns_init_unicast() or jdns_init_multicast(), depending on
-  if you want regular or multicast DNS.  If you want both kinds, you
-  can always make two sessions.
-* Make queries and have fun
-* Call jdns_step() at the right times to advance JDNS processing
+## Minimal Qt example: resolve an A record via HTTPS
 
-#### What is left to you:
-* The callback functions, obviously.
-* Querying for several "qualified" names.  Here is what Q3Dns does:
-    Query for name as provided
-    Query for name + '.domain' (for every domain the computer is in)
-* Detecting for '.local' in a name to be queried, and using that
-  to decide whether to query via Multicast or normal DNS.
-* Recognition of IP addresses.  If you want an IP address to resolve
-  to itself, then do that yourself.  Passing an IP address as a DNS
-  name to JDNS won't work (especially since it wouldn't make any
-  sense in some contexts, like SRV).
-* Recognition of known hosts.  If you want this, compare inputs against
-  jdns_system_dnsparams().
-* For zeroconf/Bonjour, keep in mind that JDNS only provides Multicast
-  DNS capability.  DNS-SD and any higher layers would be your job.
+This example sends a DNS request to a public RFC 8484 resolver, prints the
+returned IPv4 addresses and terminates the Qt event loop. It uses the new
+request-oriented transport API, with no fake socket handles or bind address.
 
-Using a custom DNS implementation has the drawback that it is difficult
-to take advantage of platform-specific features (for example, an OS-wide
-DNS cache or LDAP integration).
+```cpp
+// main.cpp
+#include <QCoreApplication>
+#include <QDebug>
+#include <QUrl>
 
-An application strategy for normal DNS should probably be:
-* If an A or AAAA record is desired, use a native lookup.
-* Else, if the platform has advanced DNS features already (ie,
-  res_query), use those.
-* Else, use JDNS.
+#include "qjdns.h"
+#include "qjdns_httptransport.h"
 
-However, it may not be a bad idea at first to use JDNS for all occasions,
-so that it can be debugged.
+int main(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+    QJDns dns;
 
-For Multicast DNS, awareness of the platform is doubly important.  There
-should only be one Multicast DNS "Responder" per computer, and using JDNS
-at the same time could result in a conflict.
+    auto *http = new QJDnsHttpTransport(
+        QUrl(QStringLiteral("https://dns.google/dns-query")));
+    if (!dns.setQueryTransport(http)) {
+        delete http; // Ownership transfers only on success.
+        return 1;
+    }
+    if (!dns.init(QJDns::Unicast))
+        return 1;
 
-An application strategy for Multicast DNS should be:
-* If the platform has a Multicast DNS daemon installed already, use
-  it somehow.
-* Else, use JDNS.
+    QObject::connect(&dns, &QJDns::resultsReady, &app,
+                     [&app](int, const QJDns::Response &response) {
+        for (const auto &record : response.answerRecords) {
+            if (record.type == QJDns::A)
+                qInfo().noquote() << record.address.toString();
+        }
+        app.quit();
+    });
+    QObject::connect(&dns, &QJDns::error, &app,
+                     [&app](int, QJDns::Error error) {
+        qWarning() << "DNS lookup failed:" << error;
+        app.exit(1);
+    });
 
-Have fun!
+    if (dns.queryStart("example.org.", QJDns::A) < 0)
+        return 1;
+    return app.exec();
+}
+```
 
+For an **installed** JDNS/QJDns package, a minimal consumer
+`CMakeLists.txt` using Qt 6 is:
+
+```cmake
+cmake_minimum_required(VERSION 3.19)
+project(dns_example LANGUAGES CXX)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Network)
+find_package(QJDns CONFIG REQUIRED)
+
+add_executable(dns_example main.cpp)
+target_link_libraries(dns_example PRIVATE QJDns::QJDns)
+```
+
+When embedding JDNS as a source subdirectory instead, use
+`add_subdirectory(path/to/jdns)` and link the same `QJDns::QJDns` target.
+
+The HTTPS URL above is an example **third-party DNS provider**, not a default
+server selected by JDNS. Replace it with your own endpoint as needed. Unless
+an appropriate proxy or pre-resolved endpoint is configured, Qt may resolve the
+HTTPS server's hostname through the OS resolver before opening the HTTPS
+connection. No alternate DNS transport is tried if the HTTPS request fails.
+
+### Other transport choices
+
+For ordinary **UDP unicast DNS**, omit `setQueryTransport()`, initialize on
+the relevant IP address family, and explicitly provide the DNS servers, for
+example:
+
+```cpp
+QJDns dns;
+QJDns::NameServer server;
+server.address = QHostAddress(QStringLiteral("1.1.1.1"));
+server.port = 53;
+
+if (!dns.init(QJDns::Unicast, QHostAddress::AnyIPv4) ||
+    !dns.setNameServers({server}))
+    return 1;
+
+// Connect to resultsReady()/error(), then call queryStart() as above.
+```
+
+Use `QJDns::systemInfo().nameServers` to inspect the operating system's
+configured resolvers if you explicitly want that policy. For DNS over TCP,
+inject `QJDnsTcpTransport(server, port, explicitProxy)` instead; for a
+caller-managed HTTP/TLS implementation, use `QJDnsExternalTransport`.
+Multicast DNS uses `QJDns::Multicast` and the separate datagram path.
+
+## Using the pure C core
+
+The core API is in `include/jdns/jdns.h`. Create a session with
+`jdns_session_new()` and common clock/random/debug callbacks. Initialize
+either datagram DNS with `jdns_init_unicast()`, native async unicast with
+`jdns_init_async_unicast()`, or mDNS with `jdns_init_multicast()`. Issue
+queries through `jdns_query()`, drive timers and events via `jdns_step()`,
+and dispose of the session using `jdns_session_delete()`.
+
+The async unicast callback receives a complete DNS wire query and an internal
+request ID; the application reports a response through
+`jdns_async_complete()` or a typed failure through `jdns_async_fail()`.
+Datagram callbacks instead implement actual socket binding, sending and
+receiving. The two callback tables are intentionally separate. See the public
+header's Doxygen comments for lifetime, threading/reentrancy and cancellation
+contracts.

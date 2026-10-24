@@ -98,6 +98,18 @@ jdns_rr_t *jdns_rr_from_resource(const jdns_packet_resource_t *pr, const jdns_pa
 void jdns_response_remove_extra(jdns_response_t *r);
 void jdns_response_remove_answer(jdns_response_t *r, int pos);
 
+/* Compile-unit-local bridges to the generic object vtable. The C ABI of
+ * typed copy/delete functions is not guaranteed to match void* prototypes. */
+#define JDNS_OBJECT_ADAPTERS(name) \
+    static void name##_delete_generic(void *p) \
+    { \
+        name##_delete((name##_t *)p); \
+    } \
+    static void *name##_copy_generic(const void *p) \
+    { \
+        return name##_copy((const name##_t *)p); \
+    }
+
 #define alloc_type(type) (type *)jdns_alloc(sizeof(type))
 #define _ustrdup(str) (unsigned char *)jdns_strdup((const char *)str)
 #define _ustrlen(str) strlen((const char *)str)
