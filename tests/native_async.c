@@ -330,8 +330,38 @@ static void no_nameserver_configuration_or_duplicate_completion(void)
     jdns_session_delete(s);
 }
 
+static void incomplete_callbacks_fail_without_network_io(void)
+{
+    Fixture f = {0};
+    jdns_callbacks_t callbacks;
+    jdns_async_callbacks_t async_cb;
+    jdns_datagram_callbacks_t dg;
+    jdns_session_t *s;
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&async_cb, 0, sizeof(async_cb));
+    memset(&dg, 0, sizeof(dg));
+    assert(!jdns_session_new(NULL));
+    assert(!jdns_session_new(&callbacks));
+    callbacks.app = &f;
+    callbacks.time_now = clock_now;
+    callbacks.rand_int = random_number;
+    callbacks.debug_line = debug_line;
+    s = jdns_session_new(&callbacks);
+    assert(s);
+    assert(!jdns_init_async_unicast(s, NULL));
+    assert(!jdns_init_async_unicast(s, &async_cb));
+    assert(!jdns_init_unicast(s, &dg, NULL, 0));
+    assert(!jdns_init_multicast(s, &dg, NULL, 5353, NULL));
+    async_cb.send = async_send;
+    async_cb.cancel = async_cancel;
+    assert(jdns_init_async_unicast(s, &async_cb));
+    assert(f.sends == 0 && f.cancels == 0);
+    jdns_session_delete(s);
+}
+
 int main(void)
 {
+    incomplete_callbacks_fail_without_network_io();
     success_and_cache();
     shared_query_delivers_to_all_consumers();
     ttl_expiration_reissues_query();
