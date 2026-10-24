@@ -1661,6 +1661,98 @@ void _remove_query_datagrams(jdns_session_t *s, const query_t *q)
 
 void _process_message(jdns_session_t *s, jdns_packet_t *p, int now, query_t *q, name_server_t *ns);
 
+/* Locate the one on-wire query belonging to the asynchronous transport.
+ * User-facing request IDs can share a query because JDNS deduplicates them. */
+static query_t *_find_async_query(jdns_session_t *s, int request_id)
+{
+    int i;
+    if(!s || !s->async_unicast || s->shutdown)
+        return 0;
+    for(i = 0; i < s->queries->count; ++i)
+    {
+        query_t *q = (query_t *)s->queries->item[i];
+        if(q->id == request_id && q->async_inflight)
+            return q;
+    }
+    return 0;
+}
+
+int jdns_async_fail(jdns_session_t *s, int request_id, int status)
+{
+    query_t *q = _find_async_query(s, request_id);
+    int k;
+    if(!q)
+        return 0;
+    if(status != JDNS_STATUS_ERROR && status != JDNS_STATUS_TIMEOUT)
+        status = JDNS_STATUS_ERROR;
+
+    q->async_inflight = 0;
+    for(k = 0; k < q->req_ids_count; ++k)
+    {
+        jdns_event_t *event = jdns_event_new();
+        event->type = JDNS_EVENT_RESPONSE;
+        event->id = q->req_ids[k];
+        event->status = status;
+        _append_event_and_hold_id(s, event);
+    }
+
+    if(q->cname_parent)
+    {
+        query_t *parent = q->cname_parent;
+        parent->cname_child = 0;
+        for(k = 0; k < parent->req_ids_count; ++k)
+        {
+            jdns_event_t *event = jdns_event_new();
+            event->type = JDNS_EVENT_RESPONSE;
+            event->id = parent->req_ids[k];
+            event->status = status;
+            _append_event_and_hold_id(s, event);
+        }
+        _remove_query_datagrams(s, parent);
+        list_remove(s->queries, parent);
+    }
+
+    _remove_query_datagrams(s, q);
+    list_remove(s->queries, q);
+    return 1;
+}
+
+int jdns_async_complete(jdns_session_t *s, int request_id,
+    const unsigned char *data, int size)
+{
+    query_t *q = _find_async_query(s, request_id);
+    jdns_packet_t *packet;
+    jdns_packet_question_t *question;
+
+    if(!q)
+        return 0;
+    if(!data || size < 12 || size > JDNS_UNICAST_IN_MAX ||
+       !jdns_packet_import(&packet, data, size))
+    {
+        jdns_async_fail(s, request_id, JDNS_STATUS_ERROR);
+        return 0;
+    }
+
+    /* Never accept an otherwise valid reply for a different request, even
+       if its 16-bit transaction ID was accidentally reused by the backend. */
+    question = packet->questions->count == 1
+        ? (jdns_packet_question_t *)packet->questions->item[0] : 0;
+    if(!packet->opts.qr || packet->id != q->dns_id || !question ||
+       question->qtype != q->qtype ||
+       !jdns_domain_cmp((const unsigned char *)question->qname->data, q->qname))
+    {
+        jdns_packet_delete(packet);
+        jdns_async_fail(s, request_id, JDNS_STATUS_ERROR);
+        return 0;
+    }
+
+    q->async_inflight = 0;
+    _process_message(s, packet, s->cb.time_now(s, s->cb.app), q, 0);
+    jdns_packet_delete(packet);
+    return 1;
+}
+
+
 // return 1 if 'q' should be deleted, 0 if not
 int _process_response(jdns_session_t *s, jdns_response_t *r, int nxdomain, int now, query_t *q);
 
