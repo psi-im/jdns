@@ -250,9 +250,91 @@ static void shutdown_cancels(void)
     jdns_session_delete(s);
     assert(f.cancels == 1);
 }
+static void shared_query_delivers_to_all_consumers(void)
+{
+    Fixture f = {0};
+    jdns_session_t *s = new_session(&f);
+    unsigned char reply[4096];
+    int a = jdns_query(s, (const unsigned char *)"shared.example.org.", JDNS_RTYPE_A);
+    int b = jdns_query(s, (const unsigned char *)"shared.example.org.", JDNS_RTYPE_A);
+    int len;
+    pump(s);
+    assert(f.sends == 1 && a != b);
+    len = make_reply(&f, reply, sizeof(reply), 0, 0);
+    assert(jdns_async_complete(s, f.sent_id, reply, len));
+    assert(take_event(s, a, JDNS_STATUS_SUCCESS));
+    assert(take_event(s, b, JDNS_STATUS_SUCCESS));
+    jdns_cancel_query(s, a);
+    jdns_cancel_query(s, b);
+    jdns_session_delete(s);
+}
+
+static void ttl_expiration_reissues_query(void)
+{
+    Fixture f = {0};
+    jdns_session_t *s = new_session(&f);
+    unsigned char reply[4096];
+    int id = jdns_query(s, (const unsigned char *)"ttl.example.org.", JDNS_RTYPE_A);
+    int len;
+    pump(s);
+    len = make_reply(&f, reply, sizeof(reply), 0, 0);
+    assert(jdns_async_complete(s, f.sent_id, reply, len));
+    assert(take_event(s, id, JDNS_STATUS_SUCCESS));
+    jdns_cancel_query(s, id);
+    f.clock_ms = 61000; /* record TTL was 60 seconds */
+    pump(s);
+    id = jdns_query(s, (const unsigned char *)"ttl.example.org.", JDNS_RTYPE_A);
+    pump(s);
+    assert(f.sends == 2);
+    jdns_cancel_query(s, id);
+    assert(f.cancels == 1);
+    jdns_session_delete(s);
+}
+
+static void cname_child_failure_propagates(void)
+{
+    Fixture f = {0};
+    jdns_session_t *s = new_session(&f);
+    unsigned char reply[4096];
+    int id = jdns_query(s, (const unsigned char *)"cnerr.example.org.", JDNS_RTYPE_A);
+    int len;
+    pump(s);
+    len = make_reply(&f, reply, sizeof(reply), 0, 1);
+    assert(jdns_async_complete(s, f.sent_id, reply, len));
+    pump(s);
+    assert(f.sends == 2);
+    assert(jdns_async_fail(s, f.sent_id, JDNS_STATUS_TIMEOUT));
+    assert(take_event(s, id, JDNS_STATUS_TIMEOUT));
+    jdns_cancel_query(s, id);
+    jdns_session_delete(s);
+}
+
+static void no_nameserver_configuration_or_duplicate_completion(void)
+{
+    Fixture f = {0};
+    jdns_session_t *s = new_session(&f);
+    jdns_nameserverlist_t *nameservers = jdns_nameserverlist_new();
+    unsigned char reply[4096];
+    int id, len;
+    assert(!jdns_set_nameservers(s, nameservers));
+    jdns_nameserverlist_delete(nameservers);
+    id = jdns_query(s, (const unsigned char *)"once.example.org.", JDNS_RTYPE_A);
+    pump(s);
+    len = make_reply(&f, reply, sizeof(reply), 0, 0);
+    assert(jdns_async_complete(s, f.sent_id, reply, len));
+    assert(!jdns_async_complete(s, f.sent_id, reply, len));
+    assert(take_event(s, id, JDNS_STATUS_SUCCESS));
+    jdns_cancel_query(s, id);
+    jdns_session_delete(s);
+}
+
 int main(void)
 {
     success_and_cache();
+    shared_query_delivers_to_all_consumers();
+    ttl_expiration_reissues_query();
+    cname_child_failure_propagates();
+    no_nameserver_configuration_or_duplicate_completion();
     duplicate_consumers();
     cancellation_before_submit();
     timeout_and_error(JDNS_STATUS_ERROR);
