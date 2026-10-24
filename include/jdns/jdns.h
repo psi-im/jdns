@@ -383,6 +383,28 @@ typedef struct jdns_callbacks
     int (*transport_write)(jdns_session_t *s, void *app, int handle,
         const jdns_address_t *addr, int port, unsigned char *buf,
         int bufsize);
+
+    /**
+     * @brief Send one DNS wire request via an asynchronous query transport.
+     * @param request_id Internal query ID, independent from DNS header ID.
+     * @param buf Complete unframed DNS query; borrowed for this callback only.
+     * @param bufsize DNS query length.
+     * @note Used only by jdns_init_async_unicast(). Never invoke
+     * jdns_async_complete()/jdns_async_fail() reentrantly from this callback:
+     * queue completion on the application event loop.
+     * @warning The transport owns server selection, retry and timeout. It
+     * must eventually report success or failure; JDNS never falls back.
+     */
+    void (*async_send)(jdns_session_t *s, void *app, int request_id,
+        const unsigned char *buf, int bufsize);
+
+    /**
+     * @brief Abort an in-flight asynchronous DNS request.
+     * @param request_id ID previously delivered by async_send().
+     * @note Called when the last consumer cancels or the session is deleted.
+     * Late completions are ignored; no acknowledgement is required.
+     */
+    void (*async_cancel)(jdns_session_t *s, void *app, int request_id);
 } jdns_callbacks_t;
 
 typedef struct jdns_event
@@ -440,6 +462,40 @@ JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr,
  * @param enabled non-zero to enable managed unicast
  */
 JDNS_EXPORT void jdns_set_managed_unicast(jdns_session_t *s, int enabled);
+
+/**
+ * @brief Initialize native asynchronous unicast DNS without binding a socket.
+ * @param s Session with async_send/async_cancel callbacks installed.
+ * @return 1 on success or 0 if required callbacks are missing.
+ * @note The transport receives complete DNS wire requests and reports
+ * completion through jdns_async_complete() / jdns_async_fail().
+ * No bind/read/write or fake transport handle is used.
+ */
+JDNS_EXPORT int jdns_init_async_unicast(jdns_session_t *s);
+
+/**
+ * @brief Deliver a complete DNS response for an async request.
+ * @param s Initialized native asynchronous unicast session.
+ * @param request_id ID passed to async_send(), not DNS transaction ID.
+ * @param data Unframed DNS wire response.
+ * @param size Response size.
+ * @return 1 if accepted; 0 if cancelled, malformed or mismatched.
+ * @note Only the query with the matching request ID and DNS header ID
+ * can consume the reply. Response records are decoded by JDNS.
+ */
+JDNS_EXPORT int jdns_async_complete(jdns_session_t *s, int request_id,
+    const unsigned char *data, int size);
+
+/**
+ * @brief Report an asynchronous I/O failure without synthesizing SERVFAIL.
+ * @param s Native async session.
+ * @param request_id Request ID from async_send().
+ * @param status JDNS_STATUS_ERROR or JDNS_STATUS_TIMEOUT.
+ * @return 1 if pending query was failed, 0 for stale/unknown request.
+ * @note The associated lookup and dependent CNAME parent are finished with
+ * an error; no retries or fallback are performed in JDNS.
+ */
+JDNS_EXPORT int jdns_async_fail(jdns_session_t *s, int request_id, int status);
 
 /**
  * @param s session
