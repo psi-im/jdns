@@ -281,7 +281,7 @@ protected:
 
     virtual void cancelHandleRequests(int handle) = 0;
 
-    void queueResponse(int handle, quint64 key, const QByteArray &data)
+    void queueResponse(int handle, const QByteArray &data)
     {
         if(!handles_.contains(handle))
             return;
@@ -293,7 +293,7 @@ protected:
         }, Qt::QueuedConnection);
     }
 
-    void queueFailure(int handle, quint64 key, const QByteArray &, const QString &reason)
+    void queueFailure(int handle, const QString &reason)
     {
         if(!handles_.contains(handle))
             return;
@@ -329,7 +329,7 @@ public:
             return;
         if(packet.size() < 12)
         {
-            queueFailure(handle, 0, packet, QStringLiteral("Invalid DNS request"));
+            queueFailure(handle, QStringLiteral("Invalid DNS request"));
             return;
         }
 
@@ -340,7 +340,7 @@ public:
         const net_handle_t network = networkHandle(activeNetwork());
         if(network == 0)
         {
-            queueFailure(handle, key, packet, QStringLiteral("Android has no active network"));
+            queueFailure(handle, QStringLiteral("Android has no active network"));
             return;
         }
 
@@ -350,7 +350,7 @@ public:
                                  static_cast<size_t>(packet.size()), 0);
         if(fd < 0)
         {
-            queueFailure(handle, key, packet,
+            queueFailure(handle,
                          QStringLiteral("android_res_nsend failed (%1)").arg(fd));
             return;
         }
@@ -425,13 +425,13 @@ private:
 
         if(size < 0)
         {
-            queueFailure(transaction->handle, transaction->key, transaction->query,
+            queueFailure(transaction->handle,
                          QStringLiteral("android_res_nresult failed (%1)").arg(size));
         }
         else
         {
             answer.resize(size);
-            queueResponse(transaction->handle, transaction->key, answer);
+            queueResponse(transaction->handle, answer);
         }
 
         delete transaction;
@@ -445,7 +445,7 @@ private:
 
         disposeTransaction(transaction);
         resolverApi().cancel(fd);
-        queueFailure(transaction->handle, transaction->key, transaction->query,
+        queueFailure(transaction->handle,
                      QStringLiteral("Android system DNS resolver timed out"));
         delete transaction;
     }
@@ -485,7 +485,7 @@ public:
             return;
         if(packet.size() < 12)
         {
-            queueFailure(handle, 0, packet, QStringLiteral("Invalid DNS request"));
+            queueFailure(handle, QStringLiteral("Invalid DNS request"));
             return;
         }
 
@@ -926,14 +926,13 @@ private:
         delete transaction->timer;
         transaction->timer = nullptr;
         delete transaction;
-        queueResponse(handle, key, answer);
+        queueResponse(handle, answer);
     }
 
     void finishFailure(Transaction *transaction, const QString &reason)
     {
         const int handle = transaction->handle;
         const quint64 key = transaction->key;
-        const QByteArray query = transaction->query;
         if(transaction->lookupId != -1)
             QHostInfo::abortHostLookup(transaction->lookupId);
         cleanupAttempt(transaction);
@@ -941,7 +940,7 @@ private:
         delete transaction->timer;
         transaction->timer = nullptr;
         delete transaction;
-        queueFailure(handle, key, query, reason);
+        queueFailure(handle, reason);
     }
 
     void cancelTransaction(quint64 key)
