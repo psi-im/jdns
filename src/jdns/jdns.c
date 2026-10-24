@@ -1018,7 +1018,10 @@ struct jdns_session
 
 jdns_session_t *jdns_session_new(jdns_callbacks_t *callbacks)
 {
-    jdns_session_t *s = alloc_type(jdns_session_t);
+    jdns_session_t *s;
+    if(!callbacks || !callbacks->time_now || !callbacks->rand_int || !callbacks->debug_line)
+        return 0;
+    s = alloc_type(jdns_session_t);
     memcpy(&s->cb, callbacks, sizeof(jdns_callbacks_t));
     s->async_unicast = 0;
     s->shutdown = 0;
@@ -1276,7 +1279,7 @@ int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callba
                       const jdns_address_t *addr, int port)
 {
     int ret;
-    if(!callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+    if(!s || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
        !callbacks->transport_read || !callbacks->transport_write)
         return 0;
     s->datagram = *callbacks;
@@ -1303,7 +1306,7 @@ int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *call
                         const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     int ret;
-    if(!callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
+    if(!s || !callbacks || !callbacks->transport_bind || !callbacks->transport_unbind ||
        !callbacks->transport_read || !callbacks->transport_write)
         return 0;
     s->datagram = *callbacks;
