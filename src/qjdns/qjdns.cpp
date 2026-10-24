@@ -466,10 +466,10 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     return true;
 }
 
-void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
+bool QJDns::Private::setNameServers(const QList<NameServer> &nslist)
 {
-    if(queryTransport)
-        return;
+    if(queryTransport || !sess)
+        return false;
 
     jdns_nameserverlist_t *addrs = jdns_nameserverlist_new();
     for(int n = 0; n < nslist.count(); ++n)
@@ -478,8 +478,9 @@ void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
         jdns_nameserverlist_append(addrs, addr, nslist[n].port);
         jdns_address_delete(addr);
     }
-    jdns_set_nameservers(sess, addrs);
+    const bool applied = jdns_set_nameservers(sess, addrs) != 0;
     jdns_nameserverlist_delete(addrs);
+    return applied;
 }
 
 void QJDns::Private::process()
@@ -1007,9 +1008,9 @@ QHostAddress QJDns::detectPrimaryMulticast(const QHostAddress &address)
     return result;
 }
 
-void QJDns::setNameServers(const QList<NameServer> &list)
+bool QJDns::setNameServers(const QList<NameServer> &list)
 {
-    d->setNameServers(list);
+    return d->setNameServers(list);
 }
 
 int QJDns::queryStart(const QByteArray &name, int type)
