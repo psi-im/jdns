@@ -26,6 +26,7 @@
 #include <time.h>
 #include "qjdns_sock.h"
 #include "qjdns_transport.h"
+#include "qjdns_querytransport.h"
 
 #include <QUdpSocket>
 
@@ -319,6 +320,7 @@ QJDns::Private::Private(QJDns *_q)
 {
     sess = 0;
     transport = 0;
+    queryTransport = nullptr;
     shutting_down = false;
     new_debug_strings = false;
     pending = 0;
@@ -352,6 +354,8 @@ void QJDns::Private::cleanup()
 
     delete transport;
     transport = 0;
+    delete queryTransport;
+    queryTransport = nullptr;
 
     shutting_down = false;
     pending = 0;
@@ -365,17 +369,47 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 {
     mode = _mode;
 
-    if(!transport)
-        transport = qjdns_create_transport(this, mode == Unicast);
-    if(mode == Multicast && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+    if(queryTransport)
     {
-        delete transport;
-        transport = nullptr;
-        return false;
+        if(mode != Unicast)
+            return false;
+        connect(queryTransport, &QJDnsQueryTransport::responseReady, this,
+                [this](int id, const QByteArray &packet) {
+            if(sess && !shutting_down)
+            {
+                jdns_async_complete(sess, id,
+                    reinterpret_cast<const unsigned char *>(packet.constData()), packet.size());
+                process();
+            }
+        });
+        connect(queryTransport, &QJDnsQueryTransport::failed, this,
+                [this](int id, const QString &reason, QJDnsQueryTransport::Failure failure) {
+            debug_strings += reason;
+            processDebug();
+            if(sess && !shutting_down)
+            {
+                jdns_async_fail(sess, id, failure == QJDnsQueryTransport::Timeout
+                                              ? JDNS_STATUS_TIMEOUT : JDNS_STATUS_ERROR);
+                process();
+            }
+        });
+        connect(queryTransport, &QJDnsQueryTransport::debugLine, this,
+                &QJDns::Private::transport_debugLine);
     }
-    connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
-    connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
-    connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
+    else
+    {
+        if(!transport)
+            transport = qjdns_create_transport(this, mode == Unicast);
+        if(mode == Multicast && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+        {
+            delete transport;
+            transport = nullptr;
+            return false;
+        }
+        connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
+        connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
+        connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
+    }
 
     jdns_callbacks_t callbacks = {};
     callbacks.app = this;
@@ -386,6 +420,8 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     callbacks.transport_unbind = cb_transport_unbind;
     callbacks.transport_read = cb_transport_read;
     callbacks.transport_write = cb_transport_write;
+    callbacks.async_send = cb_async_send;
+    callbacks.async_cancel = cb_async_cancel;
     sess = jdns_session_new(&callbacks);
     jdns_set_hold_ids_enabled(sess, 1);
     need_handle = false;
@@ -395,9 +431,14 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     jdns_address_t *baddr = qt2addr(address);
     if(mode == Unicast)
     {
-        ret = jdns_init_unicast(sess, baddr, 0);
-        if(ret && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
-            jdns_set_managed_unicast(sess, 1);
+        if(queryTransport)
+            ret = jdns_init_async_unicast(sess);
+        else
+        {
+            ret = jdns_init_unicast(sess, baddr, 0);
+            if(ret && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
+                jdns_set_managed_unicast(sess, 1);
+        }
     }
     else
     {
@@ -417,6 +458,8 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
         sess = 0;
         delete transport;
         transport = 0;
+        delete queryTransport;
+        queryTransport = nullptr;
         return false;
     }
 
@@ -425,6 +468,8 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 
 void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
 {
+    if(queryTransport)
+        return;
     if(mode == Unicast && transport && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
         return;
 
@@ -718,6 +763,20 @@ void QJDns::Private::cb_debug_line(jdns_session_t *, void *app, const char *str)
     self->processDebug();
 }
 
+void QJDns::Private::cb_async_send(jdns_session_t *, void *app, int id,
+                                   const unsigned char *data, int size)
+{
+    auto *self = static_cast<QJDns::Private *>(app);
+    self->queryTransport->startRequest(id, QByteArray(
+        reinterpret_cast<const char *>(data), size));
+}
+
+void QJDns::Private::cb_async_cancel(jdns_session_t *, void *app, int id)
+{
+    auto *self = static_cast<QJDns::Private *>(app);
+    self->queryTransport->cancelRequest(id);
+}
+
 int QJDns::Private::cb_transport_bind(jdns_session_t *, void *app, const jdns_address_t *addr, int port, const jdns_address_t *maddr)
 {
     QJDns::Private *self = (QJDns::Private *)app;
@@ -787,11 +846,27 @@ QJDns::~QJDns()
 
 bool QJDns::setTransport(QJDnsTransport *transport)
 {
-    if(d->sess || d->transport || !transport)
+    if(d->sess || d->transport || d->queryTransport || !transport)
         return false;
     transport->setParent(d);
     d->transport = transport;
     return true;
+}
+
+bool QJDns::setQueryTransport(QJDnsQueryTransport *transport)
+{
+    if(d->sess || d->transport || d->queryTransport || !transport)
+        return false;
+    transport->setParent(d);
+    d->queryTransport = transport;
+    return true;
+}
+
+bool QJDns::init(Mode mode)
+{
+    if(mode != Unicast || !d->queryTransport)
+        return false;
+    return d->init(mode, QHostAddress());
 }
 
 bool QJDns::init(Mode mode, const QHostAddress &address)
