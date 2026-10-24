@@ -207,6 +207,8 @@ static void invalid_answer(int kind)
     if(kind == 1) reply[2] &= 0x7f; /* not a DNS response */
     if(kind == 2) len = 9;        /* truncated */
     if(kind == 3) reply[13] ^= 1; /* different QNAME */
+    if(kind == 4) reply[f.sent_length - 1] = 3; /* CH class instead of IN */
+    if(kind == 5) reply[5] = 2; /* invalid DNS question count */
     assert(!jdns_async_complete(s, f.sent_id, reply, len));
     assert(take_event(s, id, JDNS_STATUS_ERROR));
     assert(f.sends == 1 && f.cancels == 0);
@@ -389,6 +391,8 @@ int main(void)
     invalid_answer(1);
     invalid_answer(2);
     invalid_answer(3);
+    invalid_answer(4);
+    invalid_answer(5);
     nxdomain();
     cname_chain();
     shutdown_cancels();
