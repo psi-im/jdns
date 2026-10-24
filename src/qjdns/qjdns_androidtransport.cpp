@@ -333,9 +333,6 @@ public:
             return;
         }
 
-        // The resolver ID is unique within the session; no DNS header ID,
-        // synthetic socket handle, or second outstanding-key set is needed.
-        const quint64 key = static_cast<quint64>(static_cast<quint32>(handle));
 
         const net_handle_t network = networkHandle(activeNetwork());
         if(network == 0)
@@ -357,8 +354,6 @@ public:
 
         auto *transaction = new Transaction;
         transaction->handle = handle;
-        transaction->key = key;
-        transaction->query = packet;
         transaction->notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
         transaction->timer = new QTimer(this);
         transaction->timer->setSingleShot(true);
@@ -392,8 +387,6 @@ private:
     struct Transaction
     {
         int handle = 0;
-        quint64 key = 0;
-        QByteArray query;
         QSocketNotifier *notifier = nullptr;
         QTimer *timer = nullptr;
     };
