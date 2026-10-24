@@ -4,6 +4,7 @@
  * Licensed under the MIT license (see COPYING).
  */
 #include "qjdns_dohtransport.h"
+#include "qjdns_externaltransport.h"
 #include "qjdns_wire_p.h"
 
 #include <QHash>
@@ -15,6 +16,7 @@
 class QJDnsDohTransport::Private
 {
 public:
+    QJDnsExternalTransport *core = nullptr;
     QUrl endpoint;
     QPointer<QNetworkAccessManager> manager;
     QHash<quint64, QPointer<QNetworkReply>> replies;
@@ -22,23 +24,53 @@ public:
 
 QJDnsDohTransport::QJDnsDohTransport(const QUrl &endpoint,
                                      QNetworkAccessManager *manager, QObject *parent)
-    : QJDnsExternalTransport(parent), d(new Private)
+    : QJDnsTransport(parent), d(new Private)
 {
     d->endpoint = endpoint;
     d->manager = manager;
-    connect(this, &QJDnsExternalTransport::queryRequested, this,
+    d->core = new QJDnsExternalTransport(this);
+    connect(d->core, &QJDnsExternalTransport::queryRequested, this,
             [this](quint64 id, const QByteArray &packet) { submitDns(id, packet); });
-    connect(this, &QJDnsExternalTransport::requestCancelled, this,
+    connect(d->core, &QJDnsExternalTransport::requestCancelled, this,
             [this](quint64 id) { cancelDns(id); });
+    connect(d->core, &QJDnsTransport::packetWritten, this, &QJDnsTransport::packetWritten);
+    connect(d->core, &QJDnsTransport::readyRead, this, &QJDnsTransport::readyRead);
+    connect(d->core, &QJDnsTransport::debugLine, this, &QJDnsTransport::debugLine);
 }
 
 QJDnsDohTransport::~QJDnsDohTransport()
 {
-    disconnect(this, nullptr, this, nullptr);
+    d->core->disconnect(this);
     const auto ids = d->replies.keys();
     for(quint64 id : ids)
         cancelDns(id);
     delete d;
+}
+
+void QJDnsDohTransport::setTimeout(int milliseconds)
+{
+    d->core->setTimeout(milliseconds);
+}
+
+int QJDnsDohTransport::open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress)
+{
+    return d->core->open(address, port, multicastAddress);
+}
+
+void QJDnsDohTransport::close(int handle)
+{
+    d->core->close(handle);
+}
+
+QJDnsTransport::SubmitResult QJDnsDohTransport::submit(int handle, const QHostAddress &destination,
+                                                        quint16 port, const QByteArray &packet)
+{
+    return d->core->submit(handle, destination, port, packet);
+}
+
+bool QJDnsDohTransport::takeResponse(int handle, Packet *packet)
+{
+    return d->core->takeResponse(handle, packet);
 }
 
 void QJDnsDohTransport::cancelDns(quint64 id)
@@ -57,9 +89,9 @@ void QJDnsDohTransport::finishDns(quint64 id, const QByteArray &response, const 
         return;
     cancelDns(id);
     if(!error.isEmpty())
-        failRequest(id, error);
+        d->core->failRequest(id, error);
     else
-        completeRequest(id, response);
+        d->core->completeRequest(id, response);
 }
 
 void QJDnsDohTransport::submitDns(quint64 id, const QByteArray &packet)
@@ -68,11 +100,11 @@ void QJDnsDohTransport::submitDns(quint64 id, const QByteArray &packet)
        || d->endpoint.scheme() != QLatin1String("https")
        || d->endpoint.host().isEmpty() || !d->endpoint.userInfo().isEmpty()
        || !d->endpoint.fragment().isEmpty()) {
-        failRequest(id, QStringLiteral("DoH requires an HTTPS endpoint and a caller-supplied network manager"));
+        d->core->failRequest(id, QStringLiteral("DoH requires an HTTPS endpoint and a caller-supplied network manager"));
         return;
     }
     if(packet.size() < 12 || packet.size() > QJDnsWire::MaxMessageSize) {
-        failRequest(id, QStringLiteral("Invalid DNS request size"));
+        d->core->failRequest(id, QStringLiteral("Invalid DNS request size"));
         return;
     }
 
