@@ -184,6 +184,22 @@ public:
     bool setTransport(QJDnsTransport *transport);
 
     /**
+     * @brief Configure a native asynchronous unicast query transport.
+     * @param transport Heap-allocated transport, owned by QJDns on success.
+     * @return true if accepted before initialization, false otherwise.
+     * @note Transports selected here do not bind sockets and use no fake
+     * source/destination endpoint parameters or socket handles.
+     */
+    bool setQueryTransport(QJDnsQueryTransport *transport);
+
+    /**
+     * @brief Initialize native unicast resolution without a bind address.
+     * @param mode Must be Unicast with a query transport configured.
+     * @return true on successful initialization.
+     */
+    bool init(Mode mode);
+
+    /**
      * @brief Initialize the DNS engine and chosen network transport.
      * @param mode Unicast resolution or multicast querying/publishing.
      * @param address Network interface/bind address used by JDNS. Managed
