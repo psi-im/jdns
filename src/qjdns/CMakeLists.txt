@@ -28,6 +28,7 @@ set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
     "${JDNS_INCLUDEDIR}/qjdns_datagramtransport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_querytransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_tcptransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_httptransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
