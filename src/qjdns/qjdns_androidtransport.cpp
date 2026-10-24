@@ -216,11 +216,6 @@ quint16 dnsId(const QByteArray &packet)
         | static_cast<quint8>(packet[1]);
 }
 
-quint64 transactionKey(int handle, quint16 id)
-{
-    return (static_cast<quint64>(static_cast<quint32>(handle)) << 16) | id;
-}
-
 bool isTruncatedDnsResponse(const QByteArray &packet)
 {
     if(packet.size() < 4)
@@ -286,27 +281,8 @@ protected:
 
     virtual void cancelHandleRequests(int handle) = 0;
 
-    bool canSubmit(int handle, const QByteArray &packet, quint64 *key)
-    {
-        if(!handles_.contains(handle) || packet.size() < 12)
-            return false;
-
-        *key = transactionKey(handle, dnsId(packet));
-        if(outstanding_.contains(*key))
-            return false;
-
-        outstanding_.insert(*key);
-        return true;
-    }
-
-    void removeOutstanding(quint64 key)
-    {
-        outstanding_.remove(key);
-    }
-
     void queueResponse(int handle, quint64 key, const QByteArray &data)
     {
-        outstanding_.remove(key);
         if(!handles_.contains(handle))
             return;
         QMetaObject::invokeMethod(this, [this, handle, data]() {
@@ -319,7 +295,6 @@ protected:
 
     void queueFailure(int handle, quint64 key, const QByteArray &, const QString &reason)
     {
-        outstanding_.remove(key);
         if(!handles_.contains(handle))
             return;
         const bool isTimeout = reason.contains(QStringLiteral("timed out"), Qt::CaseInsensitive);
@@ -331,7 +306,6 @@ protected:
 
 private:
     QSet<int> handles_;
-    QSet<quint64> outstanding_;
 };
 
 class QJDnsAndroidResolverTransport : public QJDnsAndroidTransportBase
@@ -359,12 +333,9 @@ public:
             return;
         }
 
-        quint64 key = 0;
-        if(!canSubmit(handle, packet, &key))
-        {
-            queueFailure(handle, 0, packet, QStringLiteral("Cannot submit DNS query"));
-            return;
-        }
+        // The resolver ID is unique within the session; no DNS header ID,
+        // synthetic socket handle, or second outstanding-key set is needed.
+        const quint64 key = static_cast<quint64>(static_cast<quint32>(handle));
 
         const net_handle_t network = networkHandle(activeNetwork());
         if(network == 0)
@@ -487,7 +458,6 @@ private:
 
         disposeTransaction(transaction);
         resolverApi().cancel(fd);
-        removeOutstanding(transaction->key);
         delete transaction;
     }
 
@@ -519,12 +489,9 @@ public:
             return;
         }
 
-        quint64 key = 0;
-        if(!canSubmit(handle, packet, &key))
-        {
-            queueFailure(handle, 0, packet, QStringLiteral("Cannot submit DNS query"));
-            return;
-        }
+        // The resolver ID is unique within the session; no DNS header ID,
+        // synthetic socket handle, or second outstanding-key set is needed.
+        const quint64 key = static_cast<quint64>(static_cast<quint32>(handle));
 
         auto *transaction = new Transaction;
         transaction->handle = handle;
@@ -988,7 +955,6 @@ private:
         cleanupAttempt(transaction);
         delete transaction->timer;
         transaction->timer = nullptr;
-        removeOutstanding(key);
         delete transaction;
     }
 
