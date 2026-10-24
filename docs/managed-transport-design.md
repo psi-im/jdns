@@ -14,20 +14,22 @@ No TCP or HTTP stack belongs in the JDNS C parser.
 
 ## Proposed API and ownership
 
-There are **two ways to supply the DNS transport**: a built-in Qt-network
-implementation and a backend-neutral external implementation. DNS-over-TCP
-is still provided by the built-in Qt-network implementation.
-
+Each QJDns instance uses exactly one transport; **transport classes are
+named by the protocol/backend, not by the server's location**. There is no
+local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
 
 - `QJDns::setTransport(QJDnsTransport *)` transfers ownership to QJDns **before**
-  calling `init()`; the default path is unchanged when no transport is injected.
-- `QJDnsRemoteTransport::configureTcp(server, port, QNetworkProxy)` uses an
-  explicit QTcpSocket proxy configuration. Passing NoProxy is an *explicit*
-  choice by the caller, never a fallback.
-- `QJDnsRemoteTransport::configureDoh(endpoint, QNetworkAccessManager *)`
-  injects the entire HTTP transport. The manager is **not owned** by JDNS.
-  The caller sets its proxy (SOCKS5 or HTTP CONNECT), authentication,
-  HTTPS TLS trust and policy. JDNS never creates its own HTTP manager.
+  calling `init()`; with no transport supplied, existing UDP/Android behavior
+  remains unchanged.
+- `QJDnsTcpTransport(server, port, QNetworkProxy)` uses DNS-over-TCP
+  (length-prefixed RFC 7766 frames). The caller supplies an explicit Qt
+  proxy, including `NoProxy` when direct TCP is intended.
+- `QJDnsDohTransport(endpoint, QNetworkAccessManager *)` performs RFC 8484
+  DNS-over-HTTPS. The manager is **not owned** by JDNS and must already be
+  configured with the required proxy, TLS and authentication policies.
+- Both concrete transports reuse the request bookkeeping, timeout and
+  cancellation logic of `QJDnsExternalTransport` internally rather than
+  duplicating DNS parsing, packet IDs and retry logic.
 - `QJDnsExternalTransport` is a separate, **HTTP-agnostic** implementation.
   It emits `queryRequested(requestId, dnsWirePacket)`. A caller may send that
   packet using its own HTTP/TLS stack, libcurl, an application
@@ -42,7 +44,7 @@ is still provided by the built-in Qt-network implementation.
   DNS), and ignores late completion after cancellation.
 - The transport is scoped to a single QJDns session. Separate connections
   can have separate DNS privacy policies rather than sharing a global resolver.
-- Both modes are asynchronous, support concurrent wire queries, accept
+- All three explicit transports are asynchronous, support concurrent wire queries, accept
   cancellation by closing the handle, have per-request timeouts and deliver
   responses back to JDNS.
 
@@ -51,11 +53,11 @@ is still provided by the built-in Qt-network implementation.
 1. When a proxy-specific resolver is selected, the caller supplies an explicit
    proxy for **both** DNS and destination CONNECT (and supplies a configured
    HTTP manager for DoH). No fallback to local system DNS.
-2. The TCP transport calls QTcpSocket::connectToHost(server, port) with its
+2. The `QJDnsTcpTransport` calls QTcpSocket::connectToHost(server, port) with its
    caller-supplied QNetworkProxy. To avoid local hostname resolution, use
    SOCKS5/HTTP proxy configured for hostname CONNECT; verify this in a packet
    capture on each supported Qt version.
-3. The built-in DoH endpoint must be HTTPS. Redirects are not followed. The calling
+3. The `QJDnsDohTransport` endpoint must be HTTPS. Redirects are not followed. The calling
    application must configure the HTTP manager's proxy and TLS handling
    correctly. The DoH endpoint hostname is passed through that manager; there
    is no separate local lookup inside JDNS.
