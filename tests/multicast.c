@@ -171,6 +171,43 @@ static void publication_lifecycle(void)
     jdns_session_delete(s);
     assert(f.unbinds == 1);
 }
+static void reject_wrong_lifecycle(void)
+{
+    FakeNetwork f = {0};
+    jdns_callbacks_t common = {0};
+    jdns_session_t *uninitialized;
+    jdns_session_t *multicast;
+    jdns_datagram_callbacks_t dg = {0};
+    jdns_address_t *maddr;
+    jdns_rr_t *rr;
+    common.app = &f;
+    common.time_now = clock_now;
+    common.rand_int = random_number;
+    common.debug_line = debug_log;
+    uninitialized = jdns_session_new(&common);
+    assert(uninitialized);
+    assert(jdns_query(uninitialized, (const unsigned char *)"example.local.", JDNS_RTYPE_PTR) == -1);
+    assert(jdns_step(uninitialized) == 0);
+    dg.transport_bind = bind_udp;
+    dg.transport_unbind = unbind_udp;
+    dg.transport_read = receive_udp;
+    dg.transport_write = transmit_udp;
+    assert(!jdns_init_multicast(uninitialized, &dg, NULL, 5353, NULL));
+    assert(f.binds == 0); // invalid multicast group must not open a socket
+    jdns_session_delete(uninitialized);
+
+    multicast = new_multicast(&f);
+    maddr = jdns_address_multicast4_new();
+    assert(!jdns_init_multicast(multicast, &dg, NULL, 5353, maddr));
+    assert(f.binds == 1); // double init must not rebind
+    jdns_address_delete(maddr);
+    rr = new_ptr_record();
+    assert(jdns_publish(multicast, JDNS_PUBLISH_SHARED, rr) >= 0);
+    jdns_rr_delete(rr);
+    jdns_session_delete(multicast);
+    assert(f.unbinds == 1);
+}
+
 static void query_reuse_cancel_and_probe(void)
 {
     FakeNetwork f = {0};
@@ -321,6 +358,7 @@ static void temporary_output_backpressure(void)
 }
 int main(void)
 {
+    reject_wrong_lifecycle();
     publication_lifecycle();
     received_ptr_and_goodbye();
     query_reuse_cancel_and_probe();
