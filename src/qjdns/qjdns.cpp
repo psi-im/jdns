@@ -371,6 +371,9 @@ void QJDns::Private::cleanup()
 
 bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 {
+    // Never overwrite a live JDNS session or its transport callbacks.
+    if(sess)
+        return false;
     mode = _mode;
 #ifdef Q_OS_ANDROID
     if(mode == Unicast && !queryTransport && !transport)
