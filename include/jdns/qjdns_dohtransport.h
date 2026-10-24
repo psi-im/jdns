@@ -12,11 +12,16 @@
 class QNetworkAccessManager;
 
 /**
- * RFC 8484 DNS-over-HTTPS over a caller-owned QNetworkAccessManager.
+ * RFC 8484 DNS-over-HTTPS using Qt Network.
  *
- * The caller MUST configure the manager's HTTPS, proxy and certificate
- * policy before starting any queries and keep it alive while DNS is active.
- * No hidden QNAM is created. HTTP redirects are not followed.
+ * If manager is null, a QNetworkAccessManager is created and owned by this
+ * transport. Otherwise, the provided manager remains caller-owned and must
+ * outlive active DNS requests. HTTP redirects are not followed.
+ *
+ * The internally created manager uses Qt's default networking and proxy
+ * policy. To guarantee that DoH uses a particular SOCKS5/HTTP proxy, pass
+ * an explicitly configured QNetworkAccessManager. No fallback to another
+ * DNS transport occurs when an HTTPS request fails.
  *
  * Composes an internal QJDnsExternalTransport for DNS transaction bookkeeping
  * and timeout without exposing its backend completion methods to callers.
@@ -26,7 +31,7 @@ class QNetworkAccessManager;
 class JDNS_EXPORT QJDnsDohTransport : public QJDnsTransport
 {
 public:
-    QJDnsDohTransport(const QUrl &endpoint, QNetworkAccessManager *manager,
+    QJDnsDohTransport(const QUrl &endpoint, QNetworkAccessManager *manager = nullptr,
                       QObject *parent = nullptr);
     ~QJDnsDohTransport() override;
 
