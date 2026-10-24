@@ -27,7 +27,6 @@
 #include "jdns_export.h"
 
 #include <QByteArray>
-#include <QFlags>
 #include <QHostAddress>
 #include <QObject>
 
@@ -62,7 +61,7 @@ public:
     struct Packet
     {
         QHostAddress sourceAddress; ///< Source IP address, if available.
-        quint16 sourcePort = 0;     ///< Source UDP/TCP port, if available.
+        quint16 sourcePort = 0;     ///< Source UDP port, if available.
         QByteArray data;            ///< Unframed DNS message, including header.
     };
 
@@ -119,7 +118,7 @@ public:
      * @param packet Output, populated only when a response is available.
      * @return true when one packet was removed; false if none is available.
      * @note Do not include DNS-over-TCP length prefixes or HTTP envelopes.
-     * Source address/port may be unspecified for managed transports.
+     * Real datagrams provide the sender endpoint when available.
      */
     virtual bool takeResponse(int handle, Packet *packet) = 0;
 
