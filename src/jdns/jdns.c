@@ -1628,8 +1628,9 @@ int jdns_async_complete(jdns_session_t *s, int request_id,
        if its 16-bit transaction ID was accidentally reused by the backend. */
     question = packet->questions->count == 1
         ? (jdns_packet_question_t *)packet->questions->item[0] : 0;
-    if(!packet->opts.qr || packet->id != q->dns_id || !question ||
-       question->qtype != q->qtype ||
+    if(!packet->opts.qr || packet->id != q->dns_id ||
+       packet->qdcount != 1 || !question ||
+       question->qclass != 1 || question->qtype != q->qtype ||
        !jdns_domain_cmp((const unsigned char *)question->qname->data, q->qname))
     {
         jdns_packet_delete(packet);
