@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 #include "jdns.h"
+#ifdef NDEBUG
+#undef NDEBUG // Test invariants must remain active in CMake Release builds.
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
