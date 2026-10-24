@@ -247,10 +247,11 @@ public:
     /**
      * @brief Set explicit resolver addresses for normal unicast DNS.
      * @param list DNS servers that ordinary JDNS unicast packets may target.
-     * @note Ignored for native asynchronous transports: TCP/DoH/external routing
-     * must be configured on those transports themselves.
+     * @return true when the list was accepted. Returns false for native
+     * query transports, where resolvers are configured on the transport, or
+     * when called before initialization.
      */
-    void setNameServers(const QList<NameServer> &list);
+    bool setNameServers(const QList<NameServer> &list);
 
     /**
      * @brief Start an asynchronous DNS resource record lookup.
