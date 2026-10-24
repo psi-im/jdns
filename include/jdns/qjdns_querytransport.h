@@ -33,7 +33,14 @@ public:
     };
     Q_ENUM(Failure)
 
+    /**
+     * @brief Construct an abstract asynchronous DNS query transport.
+     * @param parent Optional QObject owner; QJDns::setQueryTransport()
+     * reparents the transport if injection succeeds.
+     */
     explicit QJDnsQueryTransport(QObject *parent = nullptr) : QObject(parent) {}
+
+    /** @brief Destroy the transport and its QObject-owned resources. */
     ~QJDnsQueryTransport() override = default;
 
     /**
@@ -69,7 +76,10 @@ signals:
      */
     void failed(int id, const QString &reason, QJDnsQueryTransport::Failure kind);
 
-    /** @brief Emit debug diagnostics to the resolver. */
+    /**
+     * @brief Forward one diagnostic message to the DNS resolver.
+     * @param line Human-readable detail about the transport operation.
+     */
     void debugLine(const QString &line);
 };
 
