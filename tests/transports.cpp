@@ -146,7 +146,7 @@ private slots:
     void udpUnicastStillUsesConfiguredNameserver()
     {
         QUdpSocket server;
-        QVERIFY(server.bind(QHostAddress::LocalHost, 0));
+        QVERIFY(server.bind(QHostAddress(QHostAddress::LocalHost), quint16(0)));
         int queryCount = 0;
         connect(&server, &QUdpSocket::readyRead, &server, [&]() {
             while(server.hasPendingDatagrams()) {
