@@ -426,6 +426,8 @@ typedef struct jdns_async_callbacks
 {
     /**
      * @brief Start a query on an application network transport.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
      * @param id Internal wire-query ID (not the 16-bit DNS packet ID).
      * @param packet Unframed DNS query; borrowed for this callback only.
      * @param size Query length.
@@ -437,6 +439,8 @@ typedef struct jdns_async_callbacks
 
     /**
      * @brief Cancel a pending network operation.
+     * @param s Resolver session.
+     * @param app User-supplied context from jdns_callbacks_t::app.
      * @param id Previously submitted wire-query ID.
      * @note Late completion is ignored and no acknowledgement is required.
      */
@@ -526,11 +530,16 @@ JDNS_EXPORT int jdns_async_complete(jdns_session_t *s, int request_id,
 JDNS_EXPORT int jdns_async_fail(jdns_session_t *s, int request_id, int status);
 
 /**
- * @param s session
- * @param addr ip address of interface to bind to. NULL for all
- * @param port port of interface to bind to.  0 for any
- * @param maddr multicast address to associate with. Can not be NULL
- * @return 1 on success, 0 on failure
+ * @brief Initialize multicast DNS with real UDP datagram callbacks.
+ * @param s Resolver session. Must not have been initialized previously.
+ * @param callbacks Required socket bind/read/write/unbind callback table.
+ * @param addr Local interface address to bind, or NULL for all.
+ * @param port UDP port to bind, normally 5353; zero selects any available.
+ * @param maddr Required multicast group address; cannot be NULL.
+ * @return 1 on successful initialization, 0 on failure, including missing
+ * callbacks, missing group address or repeated initialization.
+ * @note The datagram backend must join the multicast group and configure
+ * the multicast TTL/hop limit as described by jdns_datagram_callbacks_t.
  */
 JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
                                     const jdns_address_t *addr, int port, const jdns_address_t *maddr);
@@ -541,8 +550,13 @@ JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callb
 JDNS_EXPORT void jdns_shutdown(jdns_session_t *s);
 
 /**
- * @param s session
- * @param nslist list of nameservers
+ * @brief Set upstream resolvers for datagram-based unicast DNS.
+ * @param s Initialized DNS session.
+ * @param nslist Resolver addresses and ports to use for UDP unicast.
+ * @return 1 if the list was accepted or 0 if unavailable, including native
+ * async unicast (which owns its resolver selection) or invalid session state.
+ * @note For native async query transports, choose the endpoint on the
+ * transport itself; this function does not reconfigure it.
  */
 JDNS_EXPORT int jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist);
 
