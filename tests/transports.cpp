@@ -5,7 +5,7 @@
  */
 #include <qjdns.h>
 #include <qjdns_tcptransport.h>
-#include <qjdns_dohtransport.h>
+#include <qjdns_httptransport.h>
 #include <qjdns_externaltransport.h>
 
 #include <QCoreApplication>
@@ -371,14 +371,14 @@ private slots:
         QCOMPARE(responses, 1);
     }
 
-    void dohCreatesAndOwnsDefaultManager()
+    void httpCreatesAndOwnsDefaultManager()
     {
         // Omitting QNAM must create one, parented to the DoH transport.
         // This test performs no network requests.
         QPointer<QNetworkAccessManager> owned;
         {
             QJDns dns;
-            auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")));
+            auto *transport = new QJDnsHttpTransport(QUrl(QStringLiteral("https://example.test/dns-query")));
             auto *manager = transport->findChild<QNetworkAccessManager *>();
             QVERIFY(manager);
             QCOMPARE(transport->networkAccessManager(), manager);
@@ -395,7 +395,7 @@ private slots:
         QVERIFY(owned.isNull());
     }
 
-    void dohDoesNotTakeOwnershipOfExternalManager()
+    void httpDoesNotTakeOwnershipOfExternalManager()
     {
         // External managers must never be reparented or deleted by QJDns.
         QObject owner;
@@ -404,7 +404,7 @@ private slots:
         QPointer<QNetworkAccessManager> observed(&manager);
         {
             QJDns dns;
-            auto *transport = new QJDnsDohTransport(
+            auto *transport = new QJDnsHttpTransport(
                 QUrl(QStringLiteral("https://example.test/dns-query")), &manager);
             QVERIFY(transport->findChildren<QNetworkAccessManager *>().isEmpty());
             QCOMPARE(transport->networkAccessManager(), static_cast<QNetworkAccessManager *>(&manager));
@@ -416,12 +416,12 @@ private slots:
         QCOMPARE(manager.parent(), &owner);
     }
 
-    void dohUsesCallerManagerAndJdnsParser()
+    void httpUsesCallerManagerAndJdnsParser()
     {
         FakeHttp manager;
         QJDns dns;
         const QUrl url(QStringLiteral("https://example.test/dns-query"));
-        auto *transport = new QJDnsDohTransport(url, &manager);
+        auto *transport = new QJDnsHttpTransport(url, &manager);
         QVERIFY(dns.setQueryTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast));
         bool success = false;
@@ -437,12 +437,12 @@ private slots:
         QVERIFY(manager.lastQuery.size() >= 12);
     }
 
-    void dohHttpFailureNeverFallsBack()
+    void httpRequestFailureNeverFallsBack()
     {
         FakeHttp manager;
         manager.status = 503;
         QJDns dns;
-        auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")),
+        auto *transport = new QJDnsHttpTransport(QUrl(QStringLiteral("https://example.test/dns-query")),
                                                 &manager);
         QVERIFY(dns.setQueryTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast));
