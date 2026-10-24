@@ -453,17 +453,6 @@ JDNS_EXPORT void jdns_session_delete(jdns_session_t *s);
 JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port);
 
 /**
- * Select a managed unicast transport. In this mode JDNS builds and parses
- * DNS packets, while the transport owns destination selection, retries and
- * failover. A nameserver list is not required. This must be configured
- * before starting queries.
- *
- * @param s session
- * @param enabled non-zero to enable managed unicast
- */
-JDNS_EXPORT void jdns_set_managed_unicast(jdns_session_t *s, int enabled);
-
-/**
  * @brief Initialize native asynchronous unicast DNS without binding a socket.
  * @param s Session with async_send/async_cancel callbacks installed.
  * @return 1 on success or 0 if required callbacks are missing.
