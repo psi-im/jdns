@@ -4,6 +4,10 @@ add_executable(jdns-native-async-test native_async.c)
 target_link_libraries(jdns-native-async-test PRIVATE JDns::JDns)
 add_test(NAME jdns-native-async COMMAND jdns-native-async-test)
 
+add_executable(jdns-multicast-test multicast.c)
+target_link_libraries(jdns-multicast-test PRIVATE JDns::JDns)
+add_test(NAME jdns-multicast COMMAND jdns-multicast-test)
+
 if(BUILD_QJDNS)
 find_package(Qt${JDNS_QT_MAJOR_VERSION} REQUIRED COMPONENTS Test)
 
