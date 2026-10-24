@@ -13,7 +13,8 @@ set(qjdns_SRCS
     qjdns.cpp
     qjdns_sock.cpp
     qjdns_transport.cpp
-    qjdns_remotetransport.cpp
+    qjdns_tcptransport.cpp
+    qjdns_dohtransport.cpp
     qjdns_externaltransport.cpp
     qjdnsshared.cpp
 )
@@ -26,7 +27,8 @@ set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
     "${JDNS_INCLUDEDIR}/qjdns_transport.h"
-    "${JDNS_INCLUDEDIR}/qjdns_remotetransport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_tcptransport.h"
+    "${JDNS_INCLUDEDIR}/qjdns_dohtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
 )
 
