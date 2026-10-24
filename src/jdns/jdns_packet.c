@@ -89,6 +89,7 @@ typedef struct jdns_packet_label
 
 static void jdns_packet_label_delete(jdns_packet_label_t *a);
 static jdns_packet_label_t *jdns_packet_label_copy(const jdns_packet_label_t *a);
+JDNS_OBJECT_ADAPTERS(jdns_packet_label)
 
 static jdns_packet_label_t *jdns_packet_label_new()
 {
@@ -459,6 +460,7 @@ struct jdns_packet_write
 
 void jdns_packet_write_delete(jdns_packet_write_t *a);
 jdns_packet_write_t *jdns_packet_write_copy(const jdns_packet_write_t *a);
+JDNS_OBJECT_ADAPTERS(jdns_packet_write)
 
 jdns_packet_write_t *jdns_packet_write_new()
 {
@@ -488,6 +490,8 @@ void jdns_packet_write_delete(jdns_packet_write_t *a)
 //----------------------------------------------------------------------------
 // jdns_packet_question
 //----------------------------------------------------------------------------
+JDNS_OBJECT_ADAPTERS(jdns_packet_question)
+
 jdns_packet_question_t *jdns_packet_question_new()
 {
     jdns_packet_question_t *a = JDNS_OBJECT_NEW(jdns_packet_question);
@@ -518,6 +522,8 @@ void jdns_packet_question_delete(jdns_packet_question_t *a)
 //----------------------------------------------------------------------------
 // jdns_packet_resource
 //----------------------------------------------------------------------------
+JDNS_OBJECT_ADAPTERS(jdns_packet_resource)
+
 jdns_packet_resource_t *jdns_packet_resource_new()
 {
     jdns_packet_resource_t *a = JDNS_OBJECT_NEW(jdns_packet_resource);
@@ -785,6 +791,8 @@ static int append_rrsection(const jdns_list_t *src, int at, int left, unsigned c
 error:
     return 0;
 }
+
+JDNS_OBJECT_ADAPTERS(jdns_packet)
 
 jdns_packet_t *jdns_packet_new()
 {
