@@ -185,11 +185,17 @@ public:
     bool setDatagramTransport(QJDnsDatagramTransport *transport);
 
     /**
-     * @brief Configure a native asynchronous unicast query transport.
-     * @param transport Heap-allocated transport, owned by QJDns on success.
-     * @return true if accepted before initialization, false otherwise.
-     * @note Transports selected here do not bind sockets and use no fake
-     * source/destination endpoint parameters or socket handles.
+     * @brief Select an asynchronous request/response unicast DNS backend.
+     * @param transport Non-null heap-allocated query transport.
+     * @return true if accepted; false if already initialized, if any
+     * transport was previously injected, or if the pointer is null.
+     * @note Ownership transfers to QJDns only on success; otherwise the
+     * caller remains responsible for the supplied transport. On success,
+     * QJDns reparents it and deletes it during cleanup/shutdown.
+     * Native query transports do not bind sockets or require datagram
+     * source/destination addresses and handles.
+     * @warning Invoke before init(), on the same QObject thread.
+     * Query transports are supported only in QJDns::Unicast mode.
      */
     bool setQueryTransport(QJDnsQueryTransport *transport);
 
