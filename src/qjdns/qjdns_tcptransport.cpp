@@ -4,6 +4,7 @@
  * Licensed under the MIT license (see COPYING).
  */
 #include "qjdns_tcptransport.h"
+#include "qjdns_externaltransport.h"
 #include "qjdns_wire_p.h"
 
 #include <QAbstractSocket>
@@ -28,6 +29,7 @@ public:
         int expected = -1;
     };
 
+    QJDnsExternalTransport *core = nullptr;
     QString server;
     quint16 port = 0;
     QNetworkProxy proxy;
@@ -36,26 +38,56 @@ public:
 
 QJDnsTcpTransport::QJDnsTcpTransport(const QString &server, quint16 port,
                                      const QNetworkProxy &proxy, QObject *parent)
-    : QJDnsExternalTransport(parent), d(new Private)
+    : QJDnsTransport(parent), d(new Private)
 {
     d->server = server;
     d->port = port;
     d->proxy = proxy;
-    connect(this, &QJDnsExternalTransport::queryRequested, this,
+    d->core = new QJDnsExternalTransport(this);
+    connect(d->core, &QJDnsExternalTransport::queryRequested, this,
             [this](quint64 id, const QByteArray &packet) { submitDns(id, packet); });
-    connect(this, &QJDnsExternalTransport::requestCancelled, this,
+    connect(d->core, &QJDnsExternalTransport::requestCancelled, this,
             [this](quint64 id) { cancelDns(id); });
+    connect(d->core, &QJDnsTransport::packetWritten, this, &QJDnsTransport::packetWritten);
+    connect(d->core, &QJDnsTransport::readyRead, this, &QJDnsTransport::readyRead);
+    connect(d->core, &QJDnsTransport::debugLine, this, &QJDnsTransport::debugLine);
 }
 
 QJDnsTcpTransport::~QJDnsTcpTransport()
 {
     // Base destructor can emit requestCancelled(); disconnect our callbacks
     // before the derived state is destroyed.
-    disconnect(this, nullptr, this, nullptr);
+    d->core->disconnect(this);
     const auto ids = d->requests.keys();
     for(quint64 id : ids)
         cancelDns(id);
     delete d;
+}
+
+void QJDnsTcpTransport::setTimeout(int milliseconds)
+{
+    d->core->setTimeout(milliseconds);
+}
+
+int QJDnsTcpTransport::open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress)
+{
+    return d->core->open(address, port, multicastAddress);
+}
+
+void QJDnsTcpTransport::close(int handle)
+{
+    d->core->close(handle);
+}
+
+QJDnsTransport::SubmitResult QJDnsTcpTransport::submit(int handle, const QHostAddress &destination,
+                                                        quint16 port, const QByteArray &packet)
+{
+    return d->core->submit(handle, destination, port, packet);
+}
+
+bool QJDnsTcpTransport::takeResponse(int handle, Packet *packet)
+{
+    return d->core->takeResponse(handle, packet);
 }
 
 void QJDnsTcpTransport::cancelDns(quint64 id)
@@ -77,19 +109,19 @@ void QJDnsTcpTransport::finishDns(quint64 id, const QByteArray &response, const 
         return;
     cancelDns(id);
     if(!error.isEmpty())
-        failRequest(id, error);
+        d->core->failRequest(id, error);
     else
-        completeRequest(id, response);
+        d->core->completeRequest(id, response);
 }
 
 void QJDnsTcpTransport::submitDns(quint64 id, const QByteArray &packet)
 {
     if(d->server.isEmpty() || !d->port) {
-        failRequest(id, QStringLiteral("DNS-over-TCP server and port are required"));
+        d->core->failRequest(id, QStringLiteral("DNS-over-TCP server and port are required"));
         return;
     }
     if(packet.size() < 12 || packet.size() > QJDnsWire::MaxMessageSize) {
-        failRequest(id, QStringLiteral("Invalid DNS request size"));
+        d->core->failRequest(id, QStringLiteral("Invalid DNS request size"));
         return;
     }
 
