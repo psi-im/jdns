@@ -275,7 +275,12 @@ private slots:
             auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")));
             auto *manager = transport->findChild<QNetworkAccessManager *>();
             QVERIFY(manager);
+            QCOMPARE(transport->networkAccessManager(), manager);
             QCOMPARE(manager->parent(), static_cast<QObject *>(transport));
+            // Caller can configure a proxy without taking ownership of QNAM.
+            const QNetworkProxy socks(QNetworkProxy::Socks5Proxy, QStringLiteral("127.0.0.1"), 1337);
+            transport->networkAccessManager()->setProxy(socks);
+            QCOMPARE(manager->proxy().type(), QNetworkProxy::Socks5Proxy);
             owned = manager;
             QVERIFY(dns.setTransport(transport));
             QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
@@ -296,6 +301,7 @@ private slots:
             auto *transport = new QJDnsDohTransport(
                 QUrl(QStringLiteral("https://example.test/dns-query")), &manager);
             QVERIFY(transport->findChildren<QNetworkAccessManager *>().isEmpty());
+            QCOMPARE(transport->networkAccessManager(), static_cast<QNetworkAccessManager *>(&manager));
             QCOMPARE(manager.parent(), &owner);
             QVERIFY(dns.setTransport(transport));
             QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
