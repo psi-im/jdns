@@ -106,6 +106,7 @@ struct jdns_session
     jdns_datagram_callbacks_t datagram;
     jdns_async_callbacks_t async;
     int mode;
+    int initialized; /* exactly one of async unicast, datagram unicast, mDNS */
     int async_unicast;
     int shutdown;
     int next_qid;
