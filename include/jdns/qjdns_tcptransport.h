@@ -24,18 +24,36 @@ class JDNS_EXPORT QJDnsTcpTransport : public QJDnsQueryTransport
 {
 public:
     /**
-     * @brief Create a TCP resolver transport with a fixed endpoint.
-     * @note All I/O uses the configured endpoint and network policy. The
-     * transport is asynchronous, does not perform local DNS fallback and
-     * must be handed to QJDns::setQueryTransport() before init().
+     * @brief Construct a DNS-over-TCP transport using RFC 7766 framing.
+     * @param server Resolver hostname or IP address. If using SOCKS5, the
+     * proxy resolves this hostname for its CONNECT request. A loopback
+     * address then refers to the proxy-side host, not the local machine.
+     * @param port TCP port of the resolver (normally 53).
+     * @param proxy Explicit proxy policy. Use QNetworkProxy::NoProxy for
+     * a direct TCP connection or a SOCKS5 proxy for remote DNS routing.
+     * @param parent Optional QObject owner; QJDns::setQueryTransport()
+     * takes ownership if transport injection succeeds.
+     * @note Network connections are started per request, not on
+     * construction. There is no silent fallback to UDP or local DNS.
+     * When the endpoint is a hostname and NoProxy is selected, Qt may
+     * resolve that endpoint using the system's name-resolution policy.
      */
     QJDnsTcpTransport(const QString &server, quint16 port,
                       const QNetworkProxy &proxy, QObject *parent = nullptr);
+
+    /**
+     * @brief Abort pending TCP requests and release owned sockets.
+     * @note Cancellation prevents late responses from completing queries.
+     */
     ~QJDnsTcpTransport() override;
 
     /**
-     * @brief Configure per-query timeout, in milliseconds.
-     * @note Ignored for nonpositive values; default 12000 ms.
+     * @brief Set the maximum lifetime for subsequently started DNS requests.
+     * @param milliseconds Positive timeout in milliseconds. Nonpositive
+     * values are ignored; the default is 12000 ms.
+     * @note An expired request aborts its TCP operation and reports Timeout
+     * to JDNS. It never manufactures a DNS SERVFAIL or retries through
+     * another resolver.
      */
     void setTimeout(int milliseconds);
 
