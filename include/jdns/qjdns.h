@@ -53,7 +53,7 @@ class QJDnsQueryTransport;
  * transport on the same Qt thread.
  * @warning A query transport does not automatically inherit another
  * network component's proxy configuration; configure its endpoint explicitly.
- * @see QJDnsDatagramTransport, QJDnsTcpTransport, QJDnsDohTransport,
+ * @see QJDnsDatagramTransport, QJDnsTcpTransport, QJDnsHttpTransport,
  * QJDnsExternalTransport
  */
 class JDNS_EXPORT QJDns : public QObject
