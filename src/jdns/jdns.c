@@ -592,18 +592,19 @@ void list_remove(list_t *l, void *item){
 
 typedef struct name_server
 {
-    void (*dtor)(struct name_server *);
+    void (*dtor)(void *);
     int id;
     jdns_address_t *address;
     int port;
 } name_server_t;
 
 static void name_server_delete(name_server_t *ns);
+static void name_server_delete_generic(void *p) { name_server_delete((name_server_t *)p); }
 
 static name_server_t *name_server_new()
 {
     name_server_t *ns = alloc_type(name_server_t);
-    ns->dtor = name_server_delete;
+    ns->dtor = name_server_delete_generic;
     ns->address = 0;
     return ns;
 }
@@ -664,11 +665,12 @@ void _intarray_remove(int **array, int *count, int pos)
 /* query_t declared in jdns_core_p.h */
 
 void query_delete(query_t *q);
+static void query_delete_generic(void *p) { query_delete((query_t *)p); }
 
 query_t *query_new()
 {
     query_t *q = alloc_type(query_t);
-    q->dtor = query_delete;
+    q->dtor = query_delete_generic;
     q->req_ids_count = 0;
     q->req_ids = 0;
     q->qname = 0;
@@ -779,7 +781,7 @@ void query_name_server_gone(query_t *q, int ns_id)
 
 typedef struct datagram
 {
-    void (*dtor)(struct datagram *);
+    void (*dtor)(void *);
     int handle;
     jdns_address_t *dest_address;
     int dest_port;
@@ -795,11 +797,12 @@ typedef struct datagram
 } datagram_t;
 
 void datagram_delete(datagram_t *a);
+static void datagram_delete_generic(void *p) { datagram_delete((datagram_t *)p); }
 
 datagram_t *datagram_new()
 {
     datagram_t *a = alloc_type(datagram_t);
-    a->dtor = datagram_delete;
+    a->dtor = datagram_delete_generic;
     a->dest_address = 0;
     a->data = 0;
     a->size = 0;
@@ -819,7 +822,7 @@ void datagram_delete(datagram_t *a)
 
 typedef struct cache_item
 {
-    void (*dtor)(struct cache_item *);
+    void (*dtor)(void *);
     unsigned char *qname;
     int qtype;
     int time_start;
@@ -828,11 +831,12 @@ typedef struct cache_item
 } cache_item_t;
 
 void cache_item_delete(cache_item_t *e);
+static void cache_item_delete_generic(void *p) { cache_item_delete((cache_item_t *)p); }
 
 cache_item_t *cache_item_new()
 {
     cache_item_t *a = alloc_type(cache_item_t);
-    a->dtor = cache_item_delete;
+    a->dtor = cache_item_delete_generic;
     a->qname = 0;
     a->record = 0;
     return a;
@@ -851,11 +855,12 @@ void cache_item_delete(cache_item_t *a)
 /* event_t declared in jdns_core_p.h */
 
 void event_delete(event_t *e);
+static void event_delete_generic(void *p) { event_delete((event_t *)p); }
 
 event_t *event_new()
 {
     event_t *e = alloc_type(event_t);
-    e->dtor = event_delete;
+    e->dtor = event_delete_generic;
     e->event = 0;
     return e;
 }
@@ -871,11 +876,12 @@ void event_delete(event_t *e)
 /* published_item_t declared in jdns_core_p.h */
 
 void published_item_delete(published_item_t *a);
+static void published_item_delete_generic(void *p) { published_item_delete((published_item_t *)p); }
 
 published_item_t *published_item_new()
 {
     published_item_t *a = alloc_type(published_item_t);
-    a->dtor = published_item_delete;
+    a->dtor = published_item_delete_generic;
     a->qname = 0;
     a->rec = 0;
     a->rr = 0;
