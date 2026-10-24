@@ -304,108 +304,61 @@ JDNS_EXPORT void jdns_response_append_additional(jdns_response_t *r,
 
 typedef struct jdns_session jdns_session_t;
 
+/**
+ * @brief Resolver-wide clock, entropy and diagnostics.
+ * These are the only callbacks shared by async unicast and real datagrams.
+ */
 typedef struct jdns_callbacks
 {
-    /**
-     * user-supplied context
-     */
     void *app;
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @return milliseconds since session started
-     */
     int (*time_now)(jdns_session_t *s, void *app);
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @return random integer between 0-65535
-     */
     int (*rand_int)(jdns_session_t *s, void *app);
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @param str a line of debug text
-     */
-    void (*debug_line)(jdns_session_t *s, void *app, const char *str);
-
-    /**
-     * @note For multicast, the following must be done:
-     *       - use SO_REUSEPORT to share with other mdns programs
-     *       - use IP_ADD_MEMBERSHIP to associate addr and maddr
-     *       - set IP_MULTICAST_TTL to 255
-     *
-     * @param s session
-     * @param app user-supplied context
-     * @param addr ip address of interface to bind to.  0 for all
-     * @param port port of interface to bind to.  0 for any
-     * @param maddr multicast address.  0 if not using multicast
-     * @return handle (>0) of bound socket, or 0 on error
-     */
-    int (*transport_bind)(jdns_session_t *s, void *app,
-        const jdns_address_t *addr, int port,
-        const jdns_address_t *maddr);
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @param handle transport handle obtained with transport_bind
-     */
-    void (*transport_unbind)(jdns_session_t *s, void *app, int handle);
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @param handle transport handle obtained with transport_bind
-     * @param addr store ip address of sender
-     * @param port store port of sender
-     * @param buf store packet content
-     * @param bufsize value contains max size, to be changed to real size
-     * @return 1 if packet read, 0 if none available
-     */
-    int (*transport_read)(jdns_session_t *s, void *app, int handle,
-        jdns_address_t *addr, int *port, unsigned char *buf,
-        int *bufsize);
-
-    /**
-     * @param s session
-     * @param app user-supplied context
-     * @param handle transport handle obtained with transport_bind
-     * @param addr ip address of recipient
-     * @param port port of recipient
-     * @param buf packet content
-     * @param bufsize size of packet
-     * @return 1 if packet taken for writing, 0 if this is a bad time
-     */
-    int (*transport_write)(jdns_session_t *s, void *app, int handle,
-        const jdns_address_t *addr, int port, unsigned char *buf,
-        int bufsize);
-
-    /**
-     * @brief Send one DNS wire request via an asynchronous query transport.
-     * @param request_id Internal query ID, independent from DNS header ID.
-     * @param buf Complete unframed DNS query; borrowed for this callback only.
-     * @param bufsize DNS query length.
-     * @note Used only by jdns_init_async_unicast(). Never invoke
-     * jdns_async_complete()/jdns_async_fail() reentrantly from this callback:
-     * queue completion on the application event loop.
-     * @warning The transport owns server selection, retry and timeout. It
-     * must eventually report success or failure; JDNS never falls back.
-     */
-    void (*async_send)(jdns_session_t *s, void *app, int request_id,
-        const unsigned char *buf, int bufsize);
-
-    /**
-     * @brief Abort an in-flight asynchronous DNS request.
-     * @param request_id ID previously delivered by async_send().
-     * @note Called when the last consumer cancels or the session is deleted.
-     * Late completions are ignored; no acknowledgement is required.
-     */
-    void (*async_cancel)(jdns_session_t *s, void *app, int request_id);
+    void (*debug_line)(jdns_session_t *s, void *app, const char *line);
 } jdns_callbacks_t;
+
+/**
+ * @brief Real datagram socket callbacks (UDP unicast and mDNS only).
+ * Not applicable to asynchronous request/response transports.
+ */
+typedef struct jdns_datagram_callbacks
+{
+    int (*transport_bind)(jdns_session_t *s, void *app,
+        const jdns_address_t *address, int port,
+        const jdns_address_t *multicast_address);
+    void (*transport_unbind)(jdns_session_t *s, void *app, int handle);
+    int (*transport_read)(jdns_session_t *s, void *app, int handle,
+        jdns_address_t *sender, int *sender_port, unsigned char *buffer,
+        int *buffer_size);
+    int (*transport_write)(jdns_session_t *s, void *app, int handle,
+        const jdns_address_t *recipient, int recipient_port,
+        unsigned char *packet, int packet_size);
+} jdns_datagram_callbacks_t;
+
+/**
+ * @brief Asynchronous unicast request transport callbacks.
+ * The transport selects endpoint, retry and timeout policy and sends full
+ * DNS wire packets. No socket handles or datagram endpoints are exposed.
+ */
+typedef struct jdns_async_callbacks
+{
+    /**
+     * @brief Start a query on an application network transport.
+     * @param id Internal wire-query ID (not the 16-bit DNS packet ID).
+     * @param packet Unframed DNS query; borrowed for this callback only.
+     * @param size Query length.
+     * @warning Do not call jdns_async_complete() or jdns_async_fail()
+     * reentrantly from this callback. Queue completion asynchronously.
+     */
+    void (*send)(jdns_session_t *s, void *app, int id,
+                 const unsigned char *packet, int size);
+
+    /**
+     * @brief Cancel a pending network operation.
+     * @param id Previously submitted wire-query ID.
+     * @note Late completion is ignored and no acknowledgement is required.
+     */
+    void (*cancel)(jdns_session_t *s, void *app, int id);
+} jdns_async_callbacks_t;
 
 typedef struct jdns_event
 {
@@ -446,21 +399,24 @@ JDNS_EXPORT void jdns_session_delete(jdns_session_t *s);
 
 /**
  * @param s session
+ * @param callbacks Datagram bind/read/write transport vtable.
  * @param addr ip address of interface to bind to.  NULL for all
  * @param port port of interface to bind to.  0 for any
  * @return 1 on success, 0 on failure
  */
-JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_address_t *addr, int port);
+JDNS_EXPORT int jdns_init_unicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                                  const jdns_address_t *addr, int port);
 
 /**
  * @brief Initialize native asynchronous unicast DNS without binding a socket.
- * @param s Session with async_send/async_cancel callbacks installed.
+ * @param s Session with shared clock/entropy/debug callbacks.
+ * @param callbacks Native async send/cancel transport vtable.
  * @return 1 on success or 0 if required callbacks are missing.
  * @note The transport receives complete DNS wire requests and reports
  * completion through jdns_async_complete() / jdns_async_fail().
  * No bind/read/write or fake transport handle is used.
  */
-JDNS_EXPORT int jdns_init_async_unicast(jdns_session_t *s);
+JDNS_EXPORT int jdns_init_async_unicast(jdns_session_t *s, const jdns_async_callbacks_t *callbacks);
 
 /**
  * @brief Deliver a complete DNS response for an async request.
@@ -493,7 +449,8 @@ JDNS_EXPORT int jdns_async_fail(jdns_session_t *s, int request_id, int status);
  * @param maddr multicast address to associate with. Can not be NULL
  * @return 1 on success, 0 on failure
  */
-JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_address_t *addr, int port, const jdns_address_t *maddr);
+JDNS_EXPORT int jdns_init_multicast(jdns_session_t *s, const jdns_datagram_callbacks_t *callbacks,
+                                    const jdns_address_t *addr, int port, const jdns_address_t *maddr);
 
 /**
  * @param s session
