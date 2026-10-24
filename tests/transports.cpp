@@ -12,6 +12,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -262,6 +263,45 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(success, 5000);
         QCOMPARE(connectHost, QStringLiteral("dns-server.invalid"));
         QCOMPARE(responses, 1);
+    }
+
+    void dohCreatesAndOwnsDefaultManager()
+    {
+        // Omitting QNAM must create one, parented to the DoH transport.
+        // This test performs no network requests.
+        QPointer<QNetworkAccessManager> owned;
+        {
+            QJDns dns;
+            auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")));
+            auto *manager = transport->findChild<QNetworkAccessManager *>();
+            QVERIFY(manager);
+            QCOMPARE(manager->parent(), static_cast<QObject *>(transport));
+            owned = manager;
+            QVERIFY(dns.setTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+            QVERIFY(owned);
+        }
+        QVERIFY(owned.isNull());
+    }
+
+    void dohDoesNotTakeOwnershipOfExternalManager()
+    {
+        // External managers must never be reparented or deleted by QJDns.
+        FakeHttp manager;
+        QObject owner;
+        manager.setParent(&owner);
+        QPointer<QNetworkAccessManager> observed(&manager);
+        {
+            QJDns dns;
+            auto *transport = new QJDnsDohTransport(
+                QUrl(QStringLiteral("https://example.test/dns-query")), &manager);
+            QVERIFY(transport->findChildren<QNetworkAccessManager *>().isEmpty());
+            QCOMPARE(manager.parent(), &owner);
+            QVERIFY(dns.setTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        }
+        QVERIFY(observed);
+        QCOMPARE(manager.parent(), &owner);
     }
 
     void dohUsesCallerManagerAndJdnsParser()
