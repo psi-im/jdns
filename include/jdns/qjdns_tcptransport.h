@@ -26,8 +26,9 @@ public:
     /**
      * @brief Configure DNS-over-TCP (RFC 7766) through an explicit proxy.
      * @param server DNS resolver hostname or IP, as seen from the proxy when
-     * using SOCKS5. 127.0.0.1 through SSH dynamic forwarding denotes the
-     * remote SSH host, not the local application machine.
+     * using SOCKS5. A loopback address such as 127.0.0.1 through a remote
+     * SOCKS5 server refers to the proxy-side host, not necessarily the
+     * application-side host.
      * @param port Resolver TCP port, normally 53.
      * @param proxy Explicit QNetworkProxy, including NoProxy for direct TCP.
      * @param parent Optional QObject parent, superseded when QJDns takes
