@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 
 set(jdns_SRCS
     jdns.c
+    jdns_multicast.c
     jdns_mdnsd.c
     jdns_packet.c
     jdns_sys.c
@@ -17,6 +18,7 @@ set(jdns_HEADERS
     jdns_packet.h
     jdns_mdnsd.h
     jdns_p.h
+    jdns_core_p.h
 )
 
 add_library(jdns ${jdns_SRCS} ${jdns_HEADERS} ${jdns_PUBLIC_HEADERS})
