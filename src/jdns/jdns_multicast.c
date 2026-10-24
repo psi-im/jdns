@@ -674,15 +674,16 @@ int jdns_step_multicast(jdns_session_t *s, int now)
         unsigned char *buf;
         int buf_len;
 
-        if(!mdnsd_out(s->mdns, &packet, &addr, &port))
-            break;
-
+        /* Do not dequeue/serialize an mDNS message while output is blocked.
+         * mdnsd_out() consumes pending work and allocates a packet, so calling
+         * it before checking writability both leaked memory and lost packets. */
         if(!s->handle_writable)
         {
             need_write = 1;
-            jdns_address_delete(addr);
             break;
         }
+        if(!mdnsd_out(s->mdns, &packet, &addr, &port))
+            break;
 
         if(!jdns_packet_export(packet, JDNS_UDP_MUL_OUT_MAX))
         {
