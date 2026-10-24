@@ -5,6 +5,7 @@
  * Licensed under the MIT license (see COPYING).
  */
 #include "qjdns_remotetransport.h"
+#include "qjdns_wire_p.h"
 
 #include <QHash>
 #include <QNetworkAccessManager>
@@ -36,48 +37,7 @@ quint64 transactionKey(int handle, quint16 id)
     return (quint64(quint32(handle)) << 16) | id;
 }
 
-// Only builds a minimal error response for a query produced by JDNS.
-// Successful DNS responses are parsed exclusively by the existing JDNS core.
-QByteArray serverFailure(const QByteArray &query)
-{
-    if(query.size() < 17)
-        return {};
-    int position = 12;
-    bool terminated = false;
-    while(position < query.size())
-    {
-        const quint8 label = quint8(query.at(position++));
-        if(label == 0)
-        {
-            terminated = true;
-            break;
-        }
-        if((label & 0xc0) == 0xc0)
-        {
-            if(position >= query.size())
-                return {};
-            ++position;
-            terminated = true;
-            break;
-        }
-        if((label & 0xc0) || position + label > query.size())
-            return {};
-        position += label;
-    }
-    if(!terminated || position + 4 > query.size())
-        return {};
-
-    QByteArray answer = query.left(position + 4);
-    const quint16 flags = quint16(0x8000 | 0x0080 | (read16(query, 2) & 0x0100) | 2);
-    answer[2] = char(flags >> 8);
-    answer[3] = char(flags & 0xff);
-    answer[4] = 0;
-    answer[5] = 1; // exactly one question
-    for(int i = 6; i < 12; ++i)
-        answer[i] = 0;
-    return answer;
-}
-}
+} // namespace
 
 class QJDnsRemoteTransport::Private
 {
@@ -211,7 +171,7 @@ void QJDnsRemoteTransport::complete(quint64 key, const QByteArray &response)
     if(answer.size() < 12 || answer.size() > MaxDnsMessageSize || read16(answer, 0) != read16(query, 0))
     {
         emit debugLine(QStringLiteral("Rejected invalid DNS response from remote transport"));
-        answer = serverFailure(query);
+        answer = QJDnsWire::servfail(query);
     }
     if(answer.isEmpty())
         return;
@@ -228,7 +188,7 @@ void QJDnsRemoteTransport::fail(quint64 key, const QString &reason)
     if(!request)
         return;
     emit debugLine(reason);
-    complete(key, serverFailure(request->query));
+    complete(key, QJDnsWire::servfail(request->query));
 }
 
 QJDnsTransport::SubmitResult QJDnsRemoteTransport::submit(int handle, const QHostAddress &, quint16,
