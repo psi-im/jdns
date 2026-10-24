@@ -212,6 +212,93 @@ static void malformed_multicast_and_shutdown(void)
     jdns_session_delete(s);
     assert(f.unbinds == 1);
 }
+static void put16(unsigned char *dst, unsigned int number)
+{
+    dst[0] = (unsigned char)(number >> 8);
+    dst[1] = (unsigned char)number;
+}
+static int append_dns_name(unsigned char *packet, int offset, const char *domain)
+{
+    const char *p = domain;
+    while(*p) {
+        const char *dot = strchr(p, '.');
+        size_t length = dot ? (size_t)(dot - p) : strlen(p);
+        assert(length > 0 && length < 64);
+        assert(offset + (int)length + 1 < 1024);
+        packet[offset++] = (unsigned char)length;
+        memcpy(packet + offset, p, length);
+        offset += (int)length;
+        if(!dot)
+            break;
+        p = dot + 1;
+    }
+    packet[offset++] = 0;
+    return offset;
+}
+static int make_ptr_response(unsigned char *packet, int ttl)
+{
+    int at, rdata_at;
+    memset(packet, 0, 1024);
+    packet[2] = 0x84; // DNS QR + AA, per RFC 6762
+    packet[7] = 1;    // one answer, zero questions
+    at = 12;
+    at = append_dns_name(packet, at, "_demo._tcp.local.");
+    put16(packet + at, JDNS_RTYPE_PTR); at += 2;
+    put16(packet + at, 1); at += 2;
+    packet[at++] = 0; packet[at++] = 0;
+    put16(packet + at, (unsigned int)ttl); at += 2;
+    rdata_at = at;
+    at += 2;
+    {
+        int start = at;
+        at = append_dns_name(packet, at, "sample._demo._tcp.local.");
+        put16(packet + rdata_at, (unsigned int)(at - start));
+    }
+    return at;
+}
+static void received_ptr_and_goodbye(void)
+{
+    FakeNetwork f = {0};
+    jdns_session_t *s = new_multicast(&f);
+    int q = jdns_query(s, (const unsigned char *)"_demo._tcp.local.", JDNS_RTYPE_PTR);
+    jdns_event_t *e;
+    assert(q >= 0);
+    pump(s, &f, 3);
+    f.received_length = make_ptr_response(f.received, 120);
+    jdns_set_handle_readable(s, 7);
+    pump(s, &f, 1);
+    e = next_event(s);
+    assert(e && e->type == JDNS_EVENT_RESPONSE && e->id == q &&
+           e->status == JDNS_STATUS_SUCCESS);
+    assert(e->response && e->response->answerCount == 1);
+    assert(e->response->answerRecords[0]->type == JDNS_RTYPE_PTR);
+    assert(e->response->answerRecords[0]->ttl == 120);
+    jdns_event_delete(e);
+
+    /* A second subscriber receives the current cached record. */
+    {
+        int next = jdns_query(s, (const unsigned char *)"_demo._tcp.local.", JDNS_RTYPE_PTR);
+        assert(next != q);
+        e = next_event(s);
+        assert(e && e->id == next && e->status == JDNS_STATUS_SUCCESS);
+        jdns_event_delete(e);
+        jdns_cancel_query(s, next);
+    }
+    f.received_length = make_ptr_response(f.received, 0); // goodbye
+    jdns_set_handle_readable(s, 7);
+    pump(s, &f, 1);
+    e = next_event(s);
+    assert(e && e->type == JDNS_EVENT_RESPONSE && e->id == q);
+    /* RFC 6762 goodbye = record deletion; keep it distinct from RFC 8765
+     * RRset deletion (TTL 0xFFFFFFFE). */
+    assert(e->response && e->response->answerCount == 1);
+    assert(e->response->answerRecords[0]->ttl == 0);
+    jdns_event_delete(e);
+    jdns_cancel_query(s, q);
+    jdns_session_delete(s);
+    assert(f.unbinds == 1);
+}
+
 static void temporary_output_backpressure(void)
 {
     FakeNetwork f = {0};
@@ -235,6 +322,7 @@ static void temporary_output_backpressure(void)
 int main(void)
 {
     publication_lifecycle();
+    received_ptr_and_goodbye();
     query_reuse_cancel_and_probe();
     malformed_multicast_and_shutdown();
     temporary_output_backpressure();
