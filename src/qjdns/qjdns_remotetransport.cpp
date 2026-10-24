@@ -123,7 +123,8 @@ void QJDnsRemoteTransport::retire(quint64 key)
     if(request->timer)
     {
         request->timer->stop();
-        delete request->timer;
+        // retire() can run inside the timer's own timeout signal.
+        request->timer->deleteLater();
     }
     if(request->socket)
     {

@@ -322,6 +322,34 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
     }
 
+    void tcpTimeoutNeverFallsBack()
+    {
+        // The server accepts the connection but never answers: the request
+        // times out (retiring its timer from the timer's own signal) and JDNS
+        // gets an error instead of trying another resolver.
+        QTcpServer silent;
+        QVERIFY(silent.listen(QHostAddress::LocalHost, 0));
+        QList<QTcpSocket *> accepted;
+        connect(&silent, &QTcpServer::newConnection, &silent, [&]() {
+            while(QTcpSocket *socket = silent.nextPendingConnection())
+                accepted += socket;
+        });
+
+        QJDns dns;
+        auto *transport = new QJDnsRemoteTransport;
+        transport->configureTcp(QStringLiteral("127.0.0.1"), silent.serverPort(),
+                                QNetworkProxy(QNetworkProxy::NoProxy));
+        transport->setTimeout(50);
+        QVERIFY(dns.setTransport(transport));
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        bool failed = false;
+        connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error) { failed = true; });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.spectrum.im.", QJDns::Srv) > 0);
+        QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
+        QCOMPARE(accepted.size(), 1);
+        QTRY_COMPARE_WITH_TIMEOUT(accepted.first()->state(), QAbstractSocket::UnconnectedState, 5000);
+    }
+
     void externalBackendUsesExistingSrvParser()
     {
         // Models an application-owned (e.g. QCA) async DoH client. No HTTP
