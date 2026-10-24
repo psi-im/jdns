@@ -39,8 +39,9 @@ class JDNS_EXPORT QJDnsHttpTransport : public QJDnsQueryTransport
 public:
     /**
      * @brief Create a DNS-over-HTTPS resolver transport with a fixed endpoint.
-     * @param endpoint HTTPS URL for an RFC 8484 DNS resolver. An invalid URL
-     * or any non-HTTPS scheme fails the query without making an HTTP request.
+     * @param endpoint HTTPS URL for an RFC 8484 DNS resolver. Invalid,
+     * non-HTTPS endpoints and URLs containing user information or fragments
+     * fail a query without issuing a network request.
      * @param manager Optional QNetworkAccessManager. When omitted, a manager
      * is created and owned by this transport; when provided, ownership stays
      * with the caller, who must keep it alive during outstanding requests.
@@ -49,8 +50,11 @@ public:
      * @warning An internally created manager follows Qt's normal network
      * configuration; it does not automatically inherit caller-specific proxy
      * policy. Configure networkAccessManager() before querying when routing
-     * through a particular proxy is required.
-     * @note This transport is asynchronous and has no local DNS fallback.
+     * through a particular proxy is required. Unless you explicitly supply
+     * a proxy or an already-resolved endpoint, Qt may resolve the HTTPS
+     * endpoint hostname using the system resolver during connection setup.
+     * @note This transport is asynchronous and has no fallback to UDP,
+     * a different HTTPS service or local DNS after an HTTPS request fails.
      * Pass it to QJDns::setQueryTransport() before init().
      */
     QJDnsHttpTransport(const QUrl &endpoint, QNetworkAccessManager *manager = nullptr,
@@ -68,9 +72,10 @@ public:
      * @return Caller-supplied QNetworkAccessManager, or the manager created
      * and owned by this transport; nullptr if an external manager was
      * destroyed before this call.
-     * @note This accessor never transfers ownership. Set proxy and TLS
-     * policy before starting any query. An external manager must remain
-     * alive while requests are in progress.
+     * @warning Do not delete, reparent or take ownership of the returned
+     * pointer. Set proxy and TLS policy before starting any query; changing
+     * policy afterward may alter the routing of subsequent requests.
+     * An external manager must remain alive while requests are in progress.
      */
     QNetworkAccessManager *networkAccessManager() const;
 
