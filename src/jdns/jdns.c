@@ -1313,12 +1313,12 @@ void jdns_shutdown(jdns_session_t *s)
         s->shutdown = 1; // request shutdown
 }
 
-void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist)
+int jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist)
 {
     int n, k;
 
     if(s->async_unicast)
-        return;
+        return 0;
 
     // removed?
     for(k = 0; k < s->name_servers->count; ++k)
@@ -1412,6 +1412,7 @@ void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist
             --n; // adjust position
         }
     }
+    return 1;
 }
 
 void jdns_probe(jdns_session_t *s)
