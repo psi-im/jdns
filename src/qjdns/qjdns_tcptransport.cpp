@@ -49,6 +49,9 @@ QJDnsTcpTransport::QJDnsTcpTransport(const QString &server, quint16 port,
 
 QJDnsTcpTransport::~QJDnsTcpTransport()
 {
+    // Base destructor can emit requestCancelled(); disconnect our callbacks
+    // before the derived state is destroyed.
+    disconnect(this, nullptr, this, nullptr);
     const auto ids = d->requests.keys();
     for(quint64 id : ids)
         cancelDns(id);
