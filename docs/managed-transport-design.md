@@ -24,9 +24,14 @@ local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
 - `QJDnsTcpTransport(server, port, QNetworkProxy)` uses DNS-over-TCP
   (length-prefixed RFC 7766 frames). The caller supplies an explicit Qt
   proxy, including `NoProxy` when direct TCP is intended.
-- `QJDnsDohTransport(endpoint, QNetworkAccessManager *)` performs RFC 8484
-  DNS-over-HTTPS. The manager is **not owned** by JDNS and must already be
-  configured with the required proxy, TLS and authentication policies.
+- `QJDnsDohTransport(endpoint, QNetworkAccessManager *manager = nullptr)`
+  performs RFC 8484 DNS-over-HTTPS. When the manager is omitted, the DoH
+  transport creates and **owns** its own QNAM (via QObject parenting).
+  When a manager is provided, the caller retains ownership and must keep it
+  alive for all pending queries. A default-created QNAM uses Qt's normal
+  network and proxy settings, not an implicit copy of an XMPP proxy profile.
+  Applications requiring a particular SOCKS5/HTTP proxy must explicitly
+  configure and pass their own manager; no transport fallback is attempted.
 - Both concrete transports reuse the request bookkeeping, timeout and
   cancellation logic of `QJDnsExternalTransport` internally rather than
   duplicating DNS parsing, packet IDs and retry logic.
@@ -52,15 +57,19 @@ local-vs-remote distinction: UDP, TCP and DoH servers can be on either host.
 
 1. When a proxy-specific resolver is selected, the caller supplies an explicit
    proxy for **both** DNS and destination CONNECT (and supplies a configured
-   HTTP manager for DoH). No fallback to local system DNS.
+   HTTP manager for DoH). The optional default-owned QNAM uses Qt's networking
+   defaults, so it is **not** appropriate for privacy-critical proxy profiles
+   unless the application's Qt-wide proxy configuration guarantees routing.
+   No fallback to a second DNS transport or system DNS is performed.
 2. The `QJDnsTcpTransport` calls QTcpSocket::connectToHost(server, port) with its
    caller-supplied QNetworkProxy. To avoid local hostname resolution, use
    SOCKS5/HTTP proxy configured for hostname CONNECT; verify this in a packet
    capture on each supported Qt version.
-3. The `QJDnsDohTransport` endpoint must be HTTPS. Redirects are not followed. The calling
-   application must configure the HTTP manager's proxy and TLS handling
-   correctly. The DoH endpoint hostname is passed through that manager; there
-   is no separate local lookup inside JDNS.
+3. The `QJDnsDohTransport` endpoint must be HTTPS. Redirects are not followed.
+   If a manager is supplied, the application configures its proxy/TLS policy.
+   If none is supplied, a private QNAM is created and follows Qt's normal
+   network/proxy behavior. JDNS never performs a separate DNS lookup, but
+   an unproxied QNAM may resolve the DoH endpoint hostname locally.
 4. The external backend is responsible for routing and applying DoH HTTP
    policy (HTTPS URL, Content-Type, TLS verification, proxy) or any equivalent
    custom transport. JDNS cannot enforce those network properties for an
