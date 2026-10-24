@@ -46,7 +46,7 @@ resolver and Private DNS through the native query interface.
 
 The included query transports are:
 - QJDnsTcpTransport: RFC 7766; explicit server, port and optional Qt proxy.
-- QJDnsDohTransport: RFC 8484; caller-owned QNAM or default owned QNAM.
+- QJDnsHttpTransport: RFC 8484; caller-owned QNAM or default owned QNAM.
 - QJDnsExternalTransport: HTTP/TLS-agnostic asynchronous external backend.
 
 A default-created QNAM uses normal Qt proxy settings; it cannot infer
