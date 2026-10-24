@@ -21,7 +21,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qjdns_transport.h"
+#include "qjdns_querytransport.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
 
@@ -229,49 +229,7 @@ bool isTruncatedDnsResponse(const QByteArray &packet)
     return (static_cast<quint8>(packet[2]) & 0x02) != 0;
 }
 
-QByteArray makeServfail(const QByteArray &query)
-{
-    if(query.size() < 12)
-        return QByteArray();
 
-    int pos = 12;
-    bool questionComplete = false;
-    while(pos < query.size())
-    {
-        const quint8 labelLength = static_cast<quint8>(query[pos++]);
-        if(labelLength == 0)
-        {
-            questionComplete = true;
-            break;
-        }
-        if((labelLength & 0xc0) == 0xc0)
-        {
-            if(pos >= query.size())
-                return QByteArray();
-            ++pos;
-            questionComplete = true;
-            break;
-        }
-        if((labelLength & 0xc0) != 0 || pos + labelLength > query.size())
-            return QByteArray();
-        pos += labelLength;
-    }
-
-    if(!questionComplete || pos + 4 > query.size())
-        return QByteArray();
-
-    QByteArray response = query.left(pos + 4);
-    const quint16 queryFlags = (static_cast<quint16>(static_cast<quint8>(query[2])) << 8)
-        | static_cast<quint8>(query[3]);
-    const quint16 responseFlags = static_cast<quint16>(0x8000 | 0x0080 | 0x0002 | (queryFlags & 0x0100));
-    response[2] = static_cast<char>(responseFlags >> 8);
-    response[3] = static_cast<char>(responseFlags & 0xff);
-
-    for(int i = 6; i < 12; ++i)
-        response[i] = 0;
-
-    return response;
-}
 
 QByteArray frameDnsMessage(const QByteArray &packet)
 {
@@ -303,64 +261,29 @@ int createNetworkBoundStreamSocket(net_handle_t network, const QHostAddress &ser
     return fd;
 }
 
-class QJDnsAndroidTransportBase : public QJDnsTransport
+class QJDnsAndroidTransportBase : public QJDnsQueryTransport
 {
 public:
     explicit QJDnsAndroidTransportBase(QObject *parent)
-        : QJDnsTransport(parent)
+        : QJDnsQueryTransport(parent)
     {
     }
 
-    Capabilities capabilities() const override
+    void cancelRequest(int id) override
     {
-        return ManagedUnicast;
-    }
-
-    int open(const QHostAddress &, quint16, const QHostAddress &multicastAddress) override
-    {
-        if(!multicastAddress.isNull())
-            return 0;
-
-        const int handle = nextHandle_++;
-        handles_.insert(handle);
-        return handle;
-    }
-
-    void close(int handle) override
-    {
-        handles_.remove(handle);
-        cancelHandleRequests(handle);
-
-        auto queueIt = responses_.find(handle);
-        if(queueIt != responses_.end())
-        {
-            while(!queueIt->isEmpty())
-                outstanding_.remove(queueIt->dequeue().key);
-            responses_.erase(queueIt);
-        }
-    }
-
-    bool takeResponse(int handle, Packet *packet) override
-    {
-        auto it = responses_.find(handle);
-        if(it == responses_.end() || it->isEmpty())
-            return false;
-
-        QueuedResponse response = it->dequeue();
-        if(it->isEmpty())
-            responses_.erase(it);
-
-        outstanding_.remove(response.key);
-        *packet = response.packet;
-        return true;
+        if(!handles_.remove(id))
+            return;
+        cancelHandleRequests(id);
     }
 
 protected:
-    struct QueuedResponse
+    bool registerRequest(int id)
     {
-        quint64 key = 0;
-        Packet packet;
-    };
+        if(handles_.contains(id))
+            return false;
+        handles_.insert(id);
+        return true;
+    }
 
     virtual void cancelHandleRequests(int handle) = 0;
 
@@ -387,45 +310,30 @@ protected:
         outstanding_.remove(key);
     }
 
-    void queuePacketWritten()
+    void queueResponse(int handle, quint64 key, const QByteArray &data)
     {
-        QMetaObject::invokeMethod(this, [this]() { emit packetWritten(); }, Qt::QueuedConnection);
-    }
-
-    void queueReadyRead(int handle)
-    {
-        QMetaObject::invokeMethod(this, [this, handle]() {
-            if(handles_.contains(handle) && responses_.contains(handle) && !responses_[handle].isEmpty())
-                emit readyRead(handle);
+        outstanding_.remove(key);
+        if(!handles_.remove(handle))
+            return;
+        QMetaObject::invokeMethod(this, [this, handle, data]() {
+            emit responseReady(handle, data);
         }, Qt::QueuedConnection);
     }
 
-    void queueResponse(int handle, quint64 key, const QByteArray &data)
+    void queueFailure(int handle, quint64 key, const QByteArray &, const QString &reason)
     {
-        QueuedResponse response;
-        response.key = key;
-        response.packet.data = data;
-        responses_[handle].enqueue(response);
-        queueReadyRead(handle);
-    }
-
-    void queueFailure(int handle, quint64 key, const QByteArray &query, const QString &reason)
-    {
-        emit debugLine(reason);
-        const QByteArray response = makeServfail(query);
-        if(response.isEmpty())
-        {
-            outstanding_.remove(key);
+        outstanding_.remove(key);
+        if(!handles_.remove(handle))
             return;
-        }
-        queueResponse(handle, key, response);
+        const bool isTimeout = reason.contains(QStringLiteral("timed out"), Qt::CaseInsensitive);
+        QMetaObject::invokeMethod(this, [this, handle, reason, isTimeout]() {
+            emit failed(handle, reason, isTimeout ? Timeout : NetworkError);
+        }, Qt::QueuedConnection);
     }
 
 private:
-    int nextHandle_ = 1;
     QSet<int> handles_;
     QSet<quint64> outstanding_;
-    QHash<int, QQueue<QueuedResponse>> responses_;
 };
 
 class QJDnsAndroidResolverTransport : public QJDnsAndroidTransportBase
@@ -443,23 +351,28 @@ public:
             cancelTransaction(fd);
     }
 
-    SubmitResult submit(int handle, const QHostAddress &, quint16, const QByteArray &packet) override
+    void startRequest(int handle, const QByteArray &packet) override
     {
-        if(!isKnownHandle(handle))
-            return RetryLater;
+        if(!registerRequest(handle))
+            return;
         if(packet.size() < 12)
-            return Dropped;
+        {
+            queueFailure(handle, 0, packet, QStringLiteral("Invalid DNS request"));
+            return;
+        }
 
         quint64 key = 0;
         if(!canSubmit(handle, packet, &key))
-            return Dropped;
+        {
+            queueFailure(handle, 0, packet, QStringLiteral("Cannot submit DNS query"));
+            return;
+        }
 
         const net_handle_t network = networkHandle(activeNetwork());
         if(network == 0)
         {
             queueFailure(handle, key, packet, QStringLiteral("Android has no active network"));
-            queuePacketWritten();
-            return Submitted;
+            return;
         }
 
         AndroidResolverApi &api = resolverApi();
@@ -470,8 +383,7 @@ public:
         {
             queueFailure(handle, key, packet,
                          QStringLiteral("android_res_nsend failed (%1)").arg(fd));
-            queuePacketWritten();
-            return Submitted;
+            return;
         }
 
         auto *transaction = new Transaction;
@@ -492,8 +404,7 @@ public:
         });
         transaction->timer->start(SystemResolverTimeoutMs);
 
-        queuePacketWritten();
-        return Submitted;
+        return;
     }
 
 protected:
@@ -600,16 +511,22 @@ public:
             cancelTransaction(key);
     }
 
-    SubmitResult submit(int handle, const QHostAddress &, quint16, const QByteArray &packet) override
+    void startRequest(int handle, const QByteArray &packet) override
     {
-        if(!isKnownHandle(handle))
-            return RetryLater;
+        if(!registerRequest(handle))
+            return;
         if(packet.size() < 12)
-            return Dropped;
+        {
+            queueFailure(handle, 0, packet, QStringLiteral("Invalid DNS request"));
+            return;
+        }
 
         quint64 key = 0;
         if(!canSubmit(handle, packet, &key))
-            return Dropped;
+        {
+            queueFailure(handle, 0, packet, QStringLiteral("Cannot submit DNS query"));
+            return;
+        }
 
         auto *transaction = new Transaction;
         transaction->handle = handle;
@@ -668,8 +585,7 @@ public:
             startNextServer(transaction);
         }
 
-        queuePacketWritten();
-        return Submitted;
+        return;
     }
 
 protected:
@@ -1083,7 +999,7 @@ private:
 
 } // namespace
 
-QJDnsTransport *qjdns_create_android_transport(QObject *parent)
+QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *parent)
 {
     const int sdk = QNativeInterface::QAndroidApplication::sdkVersion();
     if(sdk >= 29 && resolverApi().resolverAvailable())
@@ -1095,7 +1011,7 @@ QJDnsTransport *qjdns_create_android_transport(QObject *parent)
 
 #else
 
-QJDnsTransport *qjdns_create_android_transport(QObject *)
+QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *)
 {
     return nullptr;
 }
