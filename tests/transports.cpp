@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUdpSocket>
 #include <QTest>
 #include <QTimer>
 #include <cstring>
@@ -142,6 +143,111 @@ class DnsTransportTest : public QObject
 {
     Q_OBJECT
 private slots:
+    void udpUnicastStillUsesConfiguredNameserver()
+    {
+        QUdpSocket server;
+        QVERIFY(server.bind(QHostAddress::LocalHost, 0));
+        int queryCount = 0;
+        connect(&server, &QUdpSocket::readyRead, &server, [&]() {
+            while(server.hasPendingDatagrams()) {
+                QByteArray query;
+                query.resize(int(server.pendingDatagramSize()));
+                QHostAddress sender;
+                quint16 port = 0;
+                if(server.readDatagram(query.data(), query.size(), &sender, &port) < 0)
+                    return;
+                ++queryCount;
+                const QByteArray reply = srvAnswer(query);
+                server.writeDatagram(reply, sender, port);
+            }
+        });
+        QJDns dns;
+        QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        QJDns::NameServer ns;
+        ns.address = QHostAddress::LocalHost;
+        ns.port = server.localPort();
+        QVERIFY(dns.setNameServers({ns}));
+        bool success = false;
+        connect(&dns, &QJDns::resultsReady, &dns,
+                [&](int, const QJDns::Response &r) { success = containsExpectedSrv(r); });
+        QVERIFY(dns.queryStart("_xmpp-client._tcp.example.com.", QJDns::Srv) >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(success, 5000);
+        QCOMPARE(queryCount, 1);
+    }
+
+    void nativeQueryTransportRejectsNameserverListAndMulticast()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(!dns.init(QJDns::Multicast, QHostAddress::AnyIPv4));
+        QVERIFY(dns.init(QJDns::Unicast));
+        QJDns::NameServer ns;
+        ns.address = QHostAddress::LocalHost;
+        QVERIFY(!dns.setNameServers({ns}));
+    }
+
+    void cancellingLastCoalescedConsumerAbortsBackend()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        int dispatched = 0;
+        int cancelled = 0;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [&](int, const QByteArray &) { ++dispatched; });
+        connect(external, &QJDnsExternalTransport::requestCancelled, &dns,
+                [&](int) { ++cancelled; });
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
+        const int a = dns.queryStart("coalesce.example.com.", QJDns::Srv);
+        const int b = dns.queryStart("coalesce.example.com.", QJDns::Srv);
+        QVERIFY(a >= 0 && b >= 0 && a != b);
+        QTRY_COMPARE_WITH_TIMEOUT(dispatched, 1, 5000);
+        dns.queryCancel(a);
+        QCOMPARE(cancelled, 0);
+        dns.queryCancel(b);
+        QCOMPARE(cancelled, 1);
+        QCOMPARE(dispatched, 1);
+    }
+
+    void timeoutIsNotAProtocolError()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        external->setTimeout(40);
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
+        int seen = 0;
+        QJDns::Error kind = QJDns::ErrorGeneric;
+        connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error err) {
+            ++seen;
+            kind = err;
+        });
+        QVERIFY(dns.queryStart("timeout.example.com.", QJDns::Srv) >= 0);
+        QTRY_COMPARE_WITH_TIMEOUT(seen, 1, 5000);
+        QCOMPARE(kind, QJDns::ErrorTimeout);
+    }
+
+    void malformedResponseIsRejectedByCore()
+    {
+        QJDns dns;
+        auto *external = new QJDnsExternalTransport;
+        connect(external, &QJDnsExternalTransport::queryRequested, &dns,
+                [external](int id, const QByteArray &query) {
+            QByteArray forged = srvAnswer(query);
+            forged[0] = char(quint8(forged.at(0)) ^ 0x80); // wrong DNS transaction ID
+            external->completeRequest(id, forged);
+        });
+        QVERIFY(dns.setQueryTransport(external));
+        QVERIFY(dns.init(QJDns::Unicast));
+        bool failed = false;
+        connect(&dns, &QJDns::error, &dns, [&](int, QJDns::Error kind) {
+            failed = kind == QJDns::ErrorGeneric;
+        });
+        QVERIFY(dns.queryStart("forged.example.com.", QJDns::Srv) >= 0);
+        QTRY_VERIFY_WITH_TIMEOUT(failed, 5000);
+    }
+
     void tcpFramingAndSrvParsing()
     {
         QTcpServer server;
