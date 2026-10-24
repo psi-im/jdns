@@ -504,7 +504,7 @@ JDNS_EXPORT void jdns_shutdown(jdns_session_t *s);
  * @param s session
  * @param nslist list of nameservers
  */
-JDNS_EXPORT void jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist);
+JDNS_EXPORT int jdns_set_nameservers(jdns_session_t *s, const jdns_nameserverlist_t *nslist);
 
 /**
  * @param s session
