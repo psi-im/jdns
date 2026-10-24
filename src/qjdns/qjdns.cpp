@@ -408,12 +408,6 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     {
         if(!transport)
             transport = qjdns_create_transport(this);
-        if(mode == Multicast && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
-        {
-            delete transport;
-            transport = nullptr;
-            return false;
-        }
         connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
         connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
         connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
@@ -444,8 +438,6 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
         else
         {
             ret = jdns_init_unicast(sess, baddr, 0);
-            if(ret && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
-                jdns_set_managed_unicast(sess, 1);
         }
     }
     else
@@ -477,8 +469,6 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
 void QJDns::Private::setNameServers(const QList<NameServer> &nslist)
 {
     if(queryTransport)
-        return;
-    if(mode == Unicast && transport && transport->capabilities().testFlag(QJDnsTransport::ManagedUnicast))
         return;
 
     jdns_nameserverlist_t *addrs = jdns_nameserverlist_new();
@@ -872,9 +862,9 @@ bool QJDns::setQueryTransport(QJDnsQueryTransport *transport)
 
 bool QJDns::init(Mode mode)
 {
-    if(mode != Unicast || !d->queryTransport)
+    if(mode != Unicast)
         return false;
-    return d->init(mode, QHostAddress());
+    return d->init(mode, QHostAddress::AnyIPv4);
 }
 
 bool QJDns::init(Mode mode, const QHostAddress &address)
