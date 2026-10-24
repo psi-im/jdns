@@ -25,7 +25,7 @@
 
 #include <time.h>
 #include "qjdns_sock.h"
-#include "qjdns_transport.h"
+#include "qjdns_datagramtransport.h"
 #include "qjdns_querytransport.h"
 
 #ifdef Q_OS_ANDROID
@@ -407,10 +407,10 @@ bool QJDns::Private::init(QJDns::Mode _mode, const QHostAddress &address)
     else
     {
         if(!transport)
-            transport = qjdns_create_transport(this);
-        connect(transport, &QJDnsTransport::readyRead, this, &QJDns::Private::transport_readyRead);
-        connect(transport, &QJDnsTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
-        connect(transport, &QJDnsTransport::debugLine, this, &QJDns::Private::transport_debugLine);
+            transport = qjdns_create_datagram_transport(this);
+        connect(transport, &QJDnsDatagramTransport::readyRead, this, &QJDns::Private::transport_readyRead);
+        connect(transport, &QJDnsDatagramTransport::packetWritten, this, &QJDns::Private::transport_packetWritten);
+        connect(transport, &QJDnsDatagramTransport::debugLine, this, &QJDns::Private::transport_debugLine);
     }
 
     jdns_callbacks_t callbacks = {};
@@ -695,7 +695,7 @@ void QJDns::Private::transport_readyRead(int handle)
     {
         // Eat a response that arrived while jdns was not interested in
         // readable handles, preserving the previous socket behaviour.
-        QJDnsTransport::Packet packet;
+        QJDnsDatagramTransport::Packet packet;
         transport->takeResponse(handle, &packet);
     }
 }
@@ -798,7 +798,7 @@ int QJDns::Private::cb_transport_read(jdns_session_t *, void *app, int handle, j
 {
     QJDns::Private *self = (QJDns::Private *)app;
 
-    QJDnsTransport::Packet packet;
+    QJDnsDatagramTransport::Packet packet;
     if(!self->transport->takeResponse(handle, &packet))
         return 0;
 
@@ -821,10 +821,10 @@ int QJDns::Private::cb_transport_write(jdns_session_t *, void *app, int handle, 
     if(addr)
         host = addr2qt(addr);
     const QByteArray packet(reinterpret_cast<const char *>(buf), bufsize);
-    const QJDnsTransport::SubmitResult result = self->transport->submit(handle, host, static_cast<quint16>(port), packet);
-    if(result == QJDnsTransport::RetryLater)
+    const QJDnsDatagramTransport::SubmitResult result = self->transport->submit(handle, host, static_cast<quint16>(port), packet);
+    if(result == QJDnsDatagramTransport::RetryLater)
         return 0;
-    if(result == QJDnsTransport::Dropped)
+    if(result == QJDnsDatagramTransport::Dropped)
         return 1;
 
     ++self->pending;
@@ -842,7 +842,7 @@ QJDns::~QJDns()
     delete d;
 }
 
-bool QJDns::setTransport(QJDnsTransport *transport)
+bool QJDns::setDatagramTransport(QJDnsDatagramTransport *transport)
 {
     if(d->sess || d->transport || d->queryTransport || !transport)
         return false;
