@@ -4,13 +4,15 @@
  * SPDX-License-Identifier: MIT
  */
 #include <qjdns.h>
-#include <qjdns_remotetransport.h>
+#include <qjdns_tcptransport.h>
+#include <qjdns_dohtransport.h>
 #include <qjdns_externaltransport.h>
 
 #include <QCoreApplication>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -136,7 +138,7 @@ bool containsExpectedSrv(const QJDns::Response &response)
 }
 } // namespace
 
-class RemoteTransportTest : public QObject
+class DnsTransportTest : public QObject
 {
     Q_OBJECT
 private slots:
@@ -166,9 +168,8 @@ private slots:
         });
 
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
-        transport->configureTcp(QStringLiteral("127.0.0.1"), server.serverPort(),
-                                QNetworkProxy(QNetworkProxy::NoProxy));
+        auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), server.serverPort(),
+                                                QNetworkProxy(QNetworkProxy::NoProxy));
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
         bool success = false;
@@ -249,10 +250,9 @@ private slots:
         });
 
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
-        transport->configureTcp(QStringLiteral("dns-server.invalid"), 53,
-                                QNetworkProxy(QNetworkProxy::Socks5Proxy,
-                                              QStringLiteral("127.0.0.1"), socks.serverPort()));
+        auto *transport = new QJDnsTcpTransport(QStringLiteral("dns-server.invalid"), 53,
+                                                QNetworkProxy(QNetworkProxy::Socks5Proxy,
+                                                              QStringLiteral("127.0.0.1"), socks.serverPort()));
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
         bool success = false;
@@ -265,13 +265,57 @@ private slots:
         QCOMPARE(responses, 1);
     }
 
+    void dohCreatesAndOwnsDefaultManager()
+    {
+        // Omitting QNAM must create one, parented to the DoH transport.
+        // This test performs no network requests.
+        QPointer<QNetworkAccessManager> owned;
+        {
+            QJDns dns;
+            auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")));
+            auto *manager = transport->findChild<QNetworkAccessManager *>();
+            QVERIFY(manager);
+            QCOMPARE(transport->networkAccessManager(), manager);
+            QCOMPARE(manager->parent(), static_cast<QObject *>(transport));
+            // Caller can configure a proxy without taking ownership of QNAM.
+            const QNetworkProxy socks(QNetworkProxy::Socks5Proxy, QStringLiteral("127.0.0.1"), 1337);
+            transport->networkAccessManager()->setProxy(socks);
+            QCOMPARE(manager->proxy().type(), QNetworkProxy::Socks5Proxy);
+            owned = manager;
+            QVERIFY(dns.setTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+            QVERIFY(owned);
+        }
+        QVERIFY(owned.isNull());
+    }
+
+    void dohDoesNotTakeOwnershipOfExternalManager()
+    {
+        // External managers must never be reparented or deleted by QJDns.
+        QObject owner;
+        FakeHttp manager;
+        manager.setParent(&owner);
+        QPointer<QNetworkAccessManager> observed(&manager);
+        {
+            QJDns dns;
+            auto *transport = new QJDnsDohTransport(
+                QUrl(QStringLiteral("https://example.test/dns-query")), &manager);
+            QVERIFY(transport->findChildren<QNetworkAccessManager *>().isEmpty());
+            QCOMPARE(transport->networkAccessManager(), static_cast<QNetworkAccessManager *>(&manager));
+            QCOMPARE(manager.parent(), &owner);
+            QVERIFY(dns.setTransport(transport));
+            QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
+        }
+        QVERIFY(observed);
+        QCOMPARE(manager.parent(), &owner);
+    }
+
     void dohUsesCallerManagerAndJdnsParser()
     {
         FakeHttp manager;
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
         const QUrl url(QStringLiteral("https://example.test/dns-query"));
-        transport->configureDoh(url, &manager);
+        auto *transport = new QJDnsDohTransport(url, &manager);
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
         bool success = false;
@@ -292,8 +336,8 @@ private slots:
         FakeHttp manager;
         manager.status = 503;
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
-        transport->configureDoh(QUrl(QStringLiteral("https://example.test/dns-query")), &manager);
+        auto *transport = new QJDnsDohTransport(QUrl(QStringLiteral("https://example.test/dns-query")),
+                                                &manager);
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
         bool failed = false;
@@ -311,8 +355,8 @@ private slots:
         temp.close();
 
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
-        transport->configureTcp(QStringLiteral("127.0.0.1"), closedPort, QNetworkProxy(QNetworkProxy::NoProxy));
+        auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), closedPort,
+                                                QNetworkProxy(QNetworkProxy::NoProxy));
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
         bool failed = false;
@@ -335,9 +379,8 @@ private slots:
         });
 
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
-        transport->configureTcp(QStringLiteral("127.0.0.1"), silent.serverPort(),
-                                QNetworkProxy(QNetworkProxy::NoProxy));
+        auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), silent.serverPort(),
+                                                QNetworkProxy(QNetworkProxy::NoProxy));
         transport->setTimeout(50);
         QVERIFY(dns.setTransport(transport));
         QVERIFY(dns.init(QJDns::Unicast, QHostAddress::AnyIPv4));
@@ -508,10 +551,11 @@ private slots:
     void customManagedTransportCannotPublishMulticast()
     {
         QJDns dns;
-        auto *transport = new QJDnsRemoteTransport;
+        auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), 53,
+                                                QNetworkProxy(QNetworkProxy::NoProxy));
         QVERIFY(dns.setTransport(transport));
         QVERIFY(!dns.init(QJDns::Multicast, QHostAddress::AnyIPv4));
     }
 };
-QTEST_MAIN(RemoteTransportTest)
-#include "remotetransport.moc"
+QTEST_MAIN(DnsTransportTest)
+#include "transports.moc"

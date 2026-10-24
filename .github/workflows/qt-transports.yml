@@ -1,11 +1,11 @@
-name: QJDns remote transport build
+name: QJDns transport build
 
 on:
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: remote-dns-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: dns-transports-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

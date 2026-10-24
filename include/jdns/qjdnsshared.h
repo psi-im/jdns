@@ -38,8 +38,8 @@ class QJDnsSharedDebugPrivate;
 /**
  * Collects debugging information from QJDnsShared
  *
- * @note Iris users should utilize NetNames for DNS capabilities, <i>not</i> QJDnsSharedDebug.
- * See the QJDnsShared documentation for more information.
+ * @note This helper collects diagnostics only for QJDnsShared instances.
+ * It does not select network transports or perform DNS queries itself.
  *
  * QJDnsSharedDebug is used to collect debugging information from one or many QJDnsShared objects.
  * To use it, simply create it and pass it to QJDnsShared::setDebug().
@@ -116,8 +116,8 @@ private:
 /**
  * Performs a DNS operation using QJDnsShared
  *
- * @note Iris users should utilize NetNames for DNS capabilities, <i>not</i> QJDnsSharedRequest.
- * See the QJDnsShared documentation for more information.
+ * @note This class operates on a QJDnsShared instance. Applications using
+ * a different resolver abstraction should use that abstraction's request API.
  *
  * QJDnsSharedRequest is used to perform DNS operations on a QJDnsShared object.  Many requests may
  * be performed simultaneously, such that a single QJDnsShared object can be "shared" across the
@@ -150,7 +150,7 @@ private:
  * @code
  * QJDnsSharedRequest *req = new QJDnsSharedRequest(jdnsShared);
  * connect(req, SIGNAL(resultsReady()), SLOT(req_resultsReady()));
- * req->query("psi-im.org", QJDns::A);
+ * req->query("example.org", QJDns::A);
  * ...
  * void req_resultsReady()
  * {
@@ -329,9 +329,9 @@ private:
 /**
  * Abstraction layer on top of QJDns
  *
- * @note Iris users should utilize NetNames for DNS capabilities, <i>not</i> QJDnsShared.
- * QJDnsShared is provided for non-Iris users (and it is also used internally by NetNames).  To use
- * QJDnsShared by itself, simply drop the jdnsshared.h and jdnsshared.cpp files, along with JDNS,
+ * @note QJDnsShared is a higher-level convenience API built on QJDns.
+ * Applications with their own resolver abstraction may prefer that API.
+ * To use QJDnsShared by itself, simply drop the jdnsshared.h and jdnsshared.cpp files, along with JDNS,
  * into your project.  It is not a full replacement for Qt's Q3Dns, as some tasks are left to you,
  * but it covers most of it.
  *
@@ -430,7 +430,7 @@ private:
  * @code
  * QJDnsSharedRequest *req = new QJDnsSharedRequest(dns);
  * connect(req, SIGNAL(resultsReady()), SLOT(req_resultsReady()));
- * req->query("psi-im.org", QJDns::A);
+ * req->query("example.org", QJDns::A);
  * ...
  * void req_resultsReady()
  * {
