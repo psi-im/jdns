@@ -147,7 +147,7 @@ private slots:
         int requests = 0;
         connect(&server, &QTcpServer::newConnection, &server, [&]() {
             auto *client = server.nextPendingConnection();
-            auto *received = new QByteArray;
+            auto received = std::make_shared<QByteArray>();
             connect(client, &QTcpSocket::readyRead, client, [client, received, &requests]() {
                 *received += client->readAll();
                 if(received->size() < 2)
@@ -163,7 +163,6 @@ private slots:
                 client->write(framed.left(3)); // exercise fragmented TCP framing
                 QTimer::singleShot(10, client, [client, framed]() { client->write(framed.mid(3)); });
             });
-            connect(client, &QObject::destroyed, &server, [received]() { delete received; });
         });
 
         QJDns dns;
