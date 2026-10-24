@@ -352,13 +352,14 @@ private slots:
         QJDns dns;
         auto *external = new QJDnsExternalTransport;
         QHash<quint64, QByteArray> requests;
+        QList<quint64> issuedOrder;
         connect(external, &QJDnsExternalTransport::queryRequested, &dns,
-                [external, &requests](quint64 id, const QByteArray &packet) {
+                [external, &requests, &issuedOrder](quint64 id, const QByteArray &packet) {
             requests.insert(id, packet);
-            if(requests.size() == 2) {
-                const auto ids = requests.keys();
-                external->completeRequest(ids.at(1), srvAnswer(requests.value(ids.at(1))));
-                external->completeRequest(ids.at(0), srvAnswer(requests.value(ids.at(0))));
+            issuedOrder.append(id);
+            if(issuedOrder.size() == 2) {
+                external->completeRequest(issuedOrder.at(1), srvAnswer(requests.value(issuedOrder.at(1))));
+                external->completeRequest(issuedOrder.at(0), srvAnswer(requests.value(issuedOrder.at(0))));
             }
         });
         QVERIFY(dns.setTransport(external));
