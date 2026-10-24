@@ -788,7 +788,6 @@ typedef struct datagram
 
     // query association
     query_t *query;
-    int query_send_type; // 0 == normal, 1 == first step send-all
 
     // name server association
     int ns_id;
@@ -1785,11 +1784,11 @@ void _unicast_cancel(jdns_session_t *s, query_t *q)
 // returns 0 if the query cannot be encoded
 /* Assemble one DNS wire request. Shared by real UDP datagrams and native
  * async request transports; neither transport is responsible for encoding. */
-static jdns_packet_t *_make_query_packet(jdns_session_t *s, query_t *q, int recurse)
+static jdns_packet_t *_make_query_packet(jdns_session_t *s, query_t *q)
 {
     jdns_packet_t *packet = jdns_packet_new();
     packet->id = q->dns_id;
-    packet->opts.rd = recurse;
+    packet->opts.rd = 1;
     {
         jdns_packet_question_t *question = jdns_packet_question_new();
         question->qname = jdns_string_new();
@@ -1810,7 +1809,7 @@ static jdns_packet_t *_make_query_packet(jdns_session_t *s, query_t *q, int recu
 
 static int _dispatch_async_query(jdns_session_t *s, query_t *q)
 {
-    jdns_packet_t *packet = _make_query_packet(s, q, 1);
+    jdns_packet_t *packet = _make_query_packet(s, q);
     if(!packet)
         return 0;
     q->async_inflight = 1;
@@ -1819,9 +1818,9 @@ static int _dispatch_async_query(jdns_session_t *s, query_t *q)
     return 1;
 }
 
-int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
+int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns)
 {
-    jdns_packet_t *packet = _make_query_packet(s, q, recurse);
+    jdns_packet_t *packet = _make_query_packet(s, q);
     datagram_t *a;
     if(!packet)
         return 0;
@@ -1843,7 +1842,6 @@ int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int re
     a->data = jdns_copy_array(packet->raw_data, packet->raw_size);
     a->size = packet->raw_size;
     a->query = q;
-    a->query_send_type = query_send_type;
     jdns_packet_delete(packet);
     list_insert(s->outgoing, a, -1);
     return 1;
@@ -2182,34 +2180,18 @@ int _unicast_do_writes(jdns_session_t *s, int now)
         for(k = 0; k < s->outgoing->count; ++k)
         {
             datagram_t *a = (datagram_t *)s->outgoing->item[k];
-            if(a->query == q && a->query_send_type == 0)
+            if(a->query == q)
             {
                 already_sending = 1;
                 break;
             }
         }
 
-        // send the query, with recursion desired, normal query_send_type
+        // Send a normal recursive unicast DNS query.
         if(!already_sending)
-            _queue_packet(s, q, ns, 1, 0);
+            _queue_packet(s, q, ns);
 
         query_add_server_tried(q, ns->id);
-
-        // if there is one query, then do a trick on the first step
-        /*if(s->queries->count == 1 && q->step == 0 && !q->retrying)
-        {
-            // query all other servers non-recursively
-            // note: if sending fails, there is no retry
-            for(k = 0; k < s->name_servers->count; ++k)
-            {
-                name_server_t *i = (name_server_t *)s->name_servers->item[k];
-                if(!query_server_tried(q, i->id))
-                {
-                    // last arg sets first-step query_send_type
-                    _queue_packet(s, q, i, 0, 1);
-                }
-            }
-        }*/
 
         // out of name servers?
         if(q->servers_tried_count == s->name_servers->count)
