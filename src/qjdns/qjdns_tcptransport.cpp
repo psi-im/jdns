@@ -33,24 +33,24 @@ public:
     QString server;
     quint16 port = 0;
     QNetworkProxy proxy;
-    QHash<quint64, Request *> requests;
+    QHash<int, Request *> requests;
 };
 
 QJDnsTcpTransport::QJDnsTcpTransport(const QString &server, quint16 port,
                                      const QNetworkProxy &proxy, QObject *parent)
-    : QJDnsTransport(parent), d(new Private)
+    : QJDnsQueryTransport(parent), d(new Private)
 {
     d->server = server;
     d->port = port;
     d->proxy = proxy;
     d->core = new QJDnsExternalTransport(this);
     connect(d->core, &QJDnsExternalTransport::queryRequested, this,
-            [this](quint64 id, const QByteArray &packet) { submitDns(id, packet); });
+            [this](int id, const QByteArray &packet) { submitDns(id, packet); });
     connect(d->core, &QJDnsExternalTransport::requestCancelled, this,
-            [this](quint64 id) { cancelDns(id); });
-    connect(d->core, &QJDnsTransport::packetWritten, this, &QJDnsTransport::packetWritten);
-    connect(d->core, &QJDnsTransport::readyRead, this, &QJDnsTransport::readyRead);
-    connect(d->core, &QJDnsTransport::debugLine, this, &QJDnsTransport::debugLine);
+            [this](int id) { cancelDns(id); });
+    connect(d->core, &QJDnsQueryTransport::responseReady, this, &QJDnsQueryTransport::responseReady);
+    connect(d->core, &QJDnsQueryTransport::failed, this, &QJDnsQueryTransport::failed);
+    connect(d->core, &QJDnsQueryTransport::debugLine, this, &QJDnsQueryTransport::debugLine);
 }
 
 QJDnsTcpTransport::~QJDnsTcpTransport()
@@ -59,7 +59,7 @@ QJDnsTcpTransport::~QJDnsTcpTransport()
     // before the derived state is destroyed.
     d->core->disconnect(this);
     const auto ids = d->requests.keys();
-    for(quint64 id : ids)
+    for(int id : ids)
         cancelDns(id);
     delete d;
 }
@@ -69,28 +69,17 @@ void QJDnsTcpTransport::setTimeout(int milliseconds)
     d->core->setTimeout(milliseconds);
 }
 
-int QJDnsTcpTransport::open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress)
+void QJDnsTcpTransport::startRequest(int id, const QByteArray &packet)
 {
-    return d->core->open(address, port, multicastAddress);
+    d->core->startRequest(id, packet);
 }
 
-void QJDnsTcpTransport::close(int handle)
+void QJDnsTcpTransport::cancelRequest(int id)
 {
-    d->core->close(handle);
+    d->core->cancelRequest(id);
 }
 
-QJDnsTransport::SubmitResult QJDnsTcpTransport::submit(int handle, const QHostAddress &destination,
-                                                        quint16 port, const QByteArray &packet)
-{
-    return d->core->submit(handle, destination, port, packet);
-}
-
-bool QJDnsTcpTransport::takeResponse(int handle, Packet *packet)
-{
-    return d->core->takeResponse(handle, packet);
-}
-
-void QJDnsTcpTransport::cancelDns(quint64 id)
+void QJDnsTcpTransport::cancelDns(int id)
 {
     auto *request = d->requests.take(id);
     if(!request)
@@ -103,7 +92,7 @@ void QJDnsTcpTransport::cancelDns(quint64 id)
     delete request;
 }
 
-void QJDnsTcpTransport::finishDns(quint64 id, const QByteArray &response, const QString &error)
+void QJDnsTcpTransport::finishDns(int id, const QByteArray &response, const QString &error)
 {
     if(!d->requests.contains(id))
         return;
@@ -114,7 +103,7 @@ void QJDnsTcpTransport::finishDns(quint64 id, const QByteArray &response, const 
         d->core->completeRequest(id, response);
 }
 
-void QJDnsTcpTransport::submitDns(quint64 id, const QByteArray &packet)
+void QJDnsTcpTransport::submitDns(int id, const QByteArray &packet)
 {
     if(d->server.isEmpty() || !d->port) {
         d->core->failRequest(id, QStringLiteral("DNS-over-TCP server and port are required"));
