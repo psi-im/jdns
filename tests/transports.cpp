@@ -645,6 +645,26 @@ private slots:
         QVERIFY(cancelled);
     }
 
+    void invalidExternalQueryCancelledBeforeDeferredError()
+    {
+        QJDnsExternalTransport backend;
+        int errors = 0;
+        int requests = 0;
+        connect(&backend, &QJDnsQueryTransport::failed, &backend,
+                [&](int, const QString &, QJDnsQueryTransport::Failure) { ++errors; });
+        connect(&backend, &QJDnsExternalTransport::queryRequested, &backend,
+                [&](int, const QByteArray &) { ++requests; });
+        backend.startRequest(51, QByteArray("bad"));
+        backend.cancelRequest(51);
+        QCoreApplication::processEvents();
+        QCOMPARE(errors, 0);
+        QCOMPARE(requests, 0);
+
+        backend.startRequest(52, QByteArray("bad"));
+        QTRY_COMPARE_WITH_TIMEOUT(errors, 1, 1000);
+        QCOMPARE(requests, 0);
+    }
+
     void externalCloseNotifiesBackendAndIgnoresLateResult()
     {
         QJDnsExternalTransport external;
@@ -670,7 +690,7 @@ private slots:
         QCOMPARE(responses, 0);
     }
 
-    void customManagedTransportCannotPublishMulticast()
+    void queryTransportCannotPublishMulticast()
     {
         QJDns dns;
         auto *transport = new QJDnsTcpTransport(QStringLiteral("127.0.0.1"), 53,
