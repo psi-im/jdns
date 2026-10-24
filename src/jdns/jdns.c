@@ -1880,14 +1880,13 @@ void _unicast_cancel(jdns_session_t *s, query_t *q)
 }
 
 // returns 0 if the query cannot be encoded
-int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
+/* Assemble one DNS wire request. Shared by real UDP datagrams and native
+ * async request transports; neither transport is responsible for encoding. */
+static jdns_packet_t *_make_query_packet(jdns_session_t *s, query_t *q, int recurse)
 {
-    jdns_packet_t *packet;
-    datagram_t *a;
-
-    packet = jdns_packet_new();
+    jdns_packet_t *packet = jdns_packet_new();
     packet->id = q->dns_id;
-    packet->opts.rd = recurse; // recursion desired
+    packet->opts.rd = recurse;
     {
         jdns_packet_question_t *question = jdns_packet_question_new();
         question->qname = jdns_string_new();
@@ -1903,6 +1902,26 @@ int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int re
         jdns_packet_delete(packet);
         return 0;
     }
+    return packet;
+}
+
+static int _dispatch_async_query(jdns_session_t *s, query_t *q)
+{
+    jdns_packet_t *packet = _make_query_packet(s, q, 1);
+    if(!packet)
+        return 0;
+    q->async_inflight = 1;
+    s->cb.async_send(s, s->cb.app, q->id, packet->raw_data, packet->raw_size);
+    jdns_packet_delete(packet);
+    return 1;
+}
+
+int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int recurse, int query_send_type)
+{
+    jdns_packet_t *packet = _make_query_packet(s, q, recurse);
+    datagram_t *a;
+    if(!packet)
+        return 0;
 
     a = datagram_new();
     a->handle = s->handle;
@@ -1922,9 +1941,7 @@ int _queue_packet(jdns_session_t *s, query_t *q, const name_server_t *ns, int re
     a->size = packet->raw_size;
     a->query = q;
     a->query_send_type = query_send_type;
-
     jdns_packet_delete(packet);
-
     list_insert(s->outgoing, a, -1);
     return 1;
 }
@@ -2190,19 +2207,9 @@ int _unicast_do_writes(jdns_session_t *s, int now)
 
         if(s->async_unicast)
         {
-            // The transport receives one complete DNS request and owns
-            // routing, retry and failover until it produces a response.
-            already_sending = 0;
-            for(k = 0; k < s->outgoing->count; ++k)
-            {
-                datagram_t *a = (datagram_t *)s->outgoing->item[k];
-                if(a->query == q && a->query_send_type == 0)
-                {
-                    already_sending = 1;
-                    break;
-                }
-            }
-            if(!already_sending && !_queue_packet(s, q, 0, 1, 0))
+            // Native async transport receives a complete DNS request. No
+            // datagram/UDP destination or socket handle is instantiated.
+            if(!q->async_inflight && !_dispatch_async_query(s, q))
             {
                 // The query cannot be encoded (a label is too long, for
                 // example). Without a retry timer it would never finish.
@@ -2332,23 +2339,6 @@ int _unicast_do_writes(jdns_session_t *s, int now)
             _debug_line(s, "SEND managed (size=%d)", a->size);
         _print_hexdump(s, a->data, a->size);
 
-        if(s->async_unicast)
-        {
-            /* Existing packet queue carries only the wire payload; native
-               async submissions have no socket, endpoint or fake handle. */
-            query_t *owner = a->query;
-            if(!owner || owner->async_inflight)
-            {
-                list_remove(s->outgoing, a);
-                --n;
-                continue;
-            }
-            owner->async_inflight = 1;
-            s->cb.async_send(s, s->cb.app, owner->id, a->data, a->size);
-            list_remove(s->outgoing, a);
-            --n;
-            continue;
-        }
         ret = s->cb.transport_write(s, s->cb.app, a->handle, a->dest_address, a->dest_port, a->data, a->size);
         if(ret == 0)
         {
