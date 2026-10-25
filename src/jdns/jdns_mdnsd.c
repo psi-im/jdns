@@ -277,9 +277,29 @@ void _r_probe(mdnsd d, mdnsdr r)
 }
 
 // force any r out right away, if valid
+static void _r_unlink(mdnsdr *list, mdnsdr r)
+{
+    while(*list && *list != r)
+        list = &(*list)->list;
+    if(*list)
+        *list = r->list;
+}
+
+static void _r_unschedule(mdnsd d, mdnsdr r)
+{
+    // A publication has one intrusive list link. Remove it from its old
+    // queue before moving it, including when it is not the queue head.
+    _r_unlink(&d->probing, r);
+    _r_unlink(&d->a_now, r);
+    _r_unlink(&d->a_pause, r);
+    _r_unlink(&d->a_publish, r);
+    r->list = 0;
+}
+
 void _r_publish(mdnsd d, mdnsdr r)
 {
     if(r->unique && r->unique < 5) return; // probing already
+    _r_unschedule(d, r);
     r->tries = 0;
     d->publish.tv_sec = d->now.tv_sec; d->publish.tv_usec = d->now.tv_usec;
     _r_push(&d->a_publish,r);
@@ -291,8 +311,7 @@ void _r_send(mdnsd d, mdnsdr r)
     // removing record
     if(r->rr.ttl == 0)
     {
-        if(d->a_publish == r)
-            d->a_publish = r->list;
+        _r_unschedule(d, r);
         _r_push(&d->a_now, r);
         return;
     }
@@ -304,6 +323,7 @@ void _r_send(mdnsd d, mdnsdr r)
     }
     if(r->unique)
     { // known unique ones can be sent asap
+        _r_unschedule(d, r);
         _r_push(&d->a_now,r);
         return;
     }
@@ -312,6 +332,7 @@ void _r_send(mdnsd d, mdnsdr r)
     //d->pause.tv_usec = d->now.tv_usec + ((d->now.tv_usec % 100) + 20) * 1000;
     d->pause.tv_usec = d->now.tv_usec;
     d->pause.tv_usec += ((d->cb_rand_int(d, d->cb_arg) % 100) + 20) * 1000;
+    _r_unschedule(d, r);
     _r_push(&d->a_pause,r);
 }
 
@@ -370,13 +391,20 @@ void _q_done(mdnsd d, struct query *q)
 void _r_done(mdnsd d, mdnsdr r)
 { // buh-bye, remove from hash and free
     mdnsdr cur = 0;
+    struct unicast **queued = &d->uanswers;
     int i = _namehash_nocase((char *)r->rr.name) % SPRIME;
-    if(d->a_now == r)
-        d->a_now = r->list;
-    if(d->a_pause == r)
-        d->a_pause = r->list;
-    if(d->a_publish == r)
-        d->a_publish = r->list;
+    _r_unschedule(d, r);
+    while(*queued)
+    {
+        if((*queued)->r == r)
+        {
+            struct unicast *old = *queued;
+            *queued = old->next;
+            jdns_free(old);
+        }
+        else
+            queued = &(*queued)->next;
+    }
     if(d->published[i] == r) d->published[i] = r->next;
     else {
         for(cur=d->published[i];cur && cur->next != r;cur = cur->next);
@@ -662,7 +690,7 @@ void mdnsd_shutdown(mdnsd d)
 { // shutting down, zero out ttl and push out all records
     int i;
     mdnsdr cur,next;
-    d->a_now = 0;
+    d->a_now = d->a_pause = d->a_publish = d->probing = 0;
     for(i=0;i<SPRIME;i++)
         for(cur = d->published[i]; cur != 0;)
         {
@@ -789,7 +817,8 @@ void mdnsd_in(mdnsd d, const jdns_packet_t *m, const jdns_response_t *resp, cons
     for(i=0;i<resp->answerCount;i++)
     { // process each answer, check for a conflict, and cache
         jdns_rr_t *an = resp->answerRecords[i];
-        if((r = _r_next(d,0,(char *)an->owner,an->type)) != 0 && r->unique && _a_match(an,&r->rr) == 0) _conflict(d,r);
+        // A goodbye withdraws data; it does not assert competing ownership.
+        if(an->ttl && (r = _r_next(d,0,(char *)an->owner,an->type)) != 0 && r->unique && _a_match(an,&r->rr) == 0) _conflict(d,r);
         _cache(d,an);
     }
 
@@ -1103,6 +1132,11 @@ void mdnsd_set_raw(mdnsd d, mdnsdr r, char *data, int len)
     r->rr.rdata = jdns_copy_array((unsigned char*)data, len);
     r->rr.rdlen = len;
     _r_publish(d,r);
+}
+
+void mdnsd_set_ttl(mdnsdr r, unsigned long ttl)
+{
+    r->rr.ttl = ttl;
 }
 
 void mdnsd_set_host(mdnsd d, mdnsdr r, char *name)

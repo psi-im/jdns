@@ -20,4 +20,10 @@ target_link_libraries(qjdns-transport-test PRIVATE
 )
 add_test(NAME qjdns-transports COMMAND qjdns-transport-test)
 set_tests_properties(qjdns-transports PROPERTIES TIMEOUT 30)
+
+add_executable(qjdns-multicast-test multicast.cpp)
+set_target_properties(qjdns-multicast-test PROPERTIES AUTOMOC ON)
+target_link_libraries(qjdns-multicast-test PRIVATE QJDns::QJDns Qt${JDNS_QT_MAJOR_VERSION}::Test)
+add_test(NAME qjdns-multicast COMMAND qjdns-multicast-test)
+set_tests_properties(qjdns-multicast PROPERTIES TIMEOUT 90)
 endif()

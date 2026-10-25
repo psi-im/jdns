@@ -177,7 +177,7 @@ public:
     void doDebug(QJDns *jdns, int index);
     PreprocessMode determinePpMode(const QJDns::Record &in);
     QJDns::Record manipulateRecord(const QJDns::Record &in, PreprocessMode ppmode, bool *modified = 0);
-    bool addInterface(const QHostAddress &addr);
+    bool addInterface(const QHostAddress &addr, const QNetworkInterface &interface = QNetworkInterface());
     void removeInterface(const QHostAddress &addr);
 
     void queryStart(QJDnsSharedRequest *obj, const QByteArray &name, QJDns::Type qType);
@@ -202,9 +202,10 @@ class QJDnsSharedRequestPrivate : public QObject
     Q_OBJECT
 public:
     QJDnsSharedRequest *q;
-    QJDnsSharedPrivate *jsp;
+    QPointer<QJDnsSharedPrivate> jsp;
     QPointer<QJDns> dns;
     bool direct = false;
+    bool deferred = false;
     bool active = false;
     int queryId = -1;
     quint64 generation = 0;
@@ -224,7 +225,11 @@ public:
     QList<Handle> published;
 
     // use to weed out dups for multicast
-    QList<QJDns::Record> queryCache;
+    struct CachedAnswer {
+        QJDns::Record record;
+        QSet<QJDns *> sources;
+    };
+    QList<CachedAnswer> queryCache;
 
     bool success;
     QJDnsSharedRequest::Error error;
@@ -236,6 +241,8 @@ public:
     void finishDirect(bool ok, QJDnsSharedRequest::Error error,
                       const QList<QJDns::Record> &records = {});
     void startDirect(const QByteArray &name, int type);
+    void startShared();
+    void failShared(QJDnsSharedRequest::Error reason);
 
 private slots:
     void lateTimer_timeout();

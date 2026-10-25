@@ -110,6 +110,7 @@ void mdnsd_done(mdnsd d, mdnsdr r);
 //
 // these all set/update the data for the given record, nothing is published until they are called
 void mdnsd_set_raw(mdnsd d, mdnsdr r, char *data, int len);
+void mdnsd_set_ttl(mdnsdr r, unsigned long ttl);
 void mdnsd_set_host(mdnsd d, mdnsdr r, char *name);
 void mdnsd_set_ip(mdnsd d, mdnsdr r, unsigned long int ip);
 void mdnsd_set_srv(mdnsd d, mdnsdr r, int priority, int weight, int port, char *name);

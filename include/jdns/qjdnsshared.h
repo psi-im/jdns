@@ -258,7 +258,7 @@ public:
         ErrorTimeout,   /**< The operation timed out.                                    */
         ErrorConflict,  /**< Attempt to publish an already published unique record.      */
         ErrorCancelled, /**< A QJDns::query() request was explicitly cancelled.          */
-        ErrorResolverDestroyed /**< The QJDns backing an unfinished request was destroyed. */
+        ErrorResolverDestroyed /**< The resolver backing an active request was destroyed. */
     };
 
     /**
@@ -337,6 +337,7 @@ signals:
     void resultsReady();
 
 private:
+    friend class QJDnsMulticast;
     friend class QJDnsShared;
     friend class QJDnsSharedPrivate;
     friend class QJDnsSharedRequestPrivate;
@@ -654,6 +655,7 @@ signals:
     void shutdownFinished();
 
 private:
+    friend class QJDnsMulticast;
     friend class QJDnsSharedRequest;
     friend class QJDnsSharedPrivate;
     QJDnsSharedPrivate *d;

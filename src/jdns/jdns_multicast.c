@@ -52,6 +52,7 @@ static jdns_rr_t *_mdnsda2rr(mdnsda a)
 
         // we don't need a reference for these types
         rr = jdns_rr_from_resource(pr, 0);
+        jdns_packet_resource_delete(pr);
     }
     // else, pull the values out of 'a' directly
     else
@@ -391,7 +392,12 @@ static jdns_string_t *_create_text(const jdns_stringlist_t *texts)
         out->size = total;
     }
     else
-        jdns_string_set_cstr(out, "");
+    {
+        // RFC 6763 section 6: an empty TXT record is one empty character
+        // string, not zero octets of RDATA.
+        const unsigned char empty = 0;
+        jdns_string_set(out, &empty, 1);
+    }
     return out;
 }
 
@@ -507,6 +513,12 @@ int _multicast_publish(jdns_session_t *s, int mode, const jdns_rr_t *rr)
         published_item_t *i = (published_item_t *)s->published->item[n];
         if(i->qtype == rr->type && jdns_domain_cmp(i->qname, rr->owner))
         {
+            // DNS-SD browses one shared PTR RRset containing several service
+            // instances. Distinct targets need independent publication IDs.
+            if(mode == JDNS_PUBLISH_SHARED && i->mode == JDNS_PUBLISH_SHARED
+               && rr->type == JDNS_RTYPE_PTR && rr->haveKnown && i->rr->haveKnown
+               && !jdns_domain_cmp(i->rr->data.name, rr->data.name))
+                continue;
             pub = i;
             break;
         }
@@ -578,24 +590,30 @@ void _multicast_update_publish(jdns_session_t *s, int id, const jdns_rr_t *rr)
     if(!pub)
         return;
 
+    // An update cannot change the identity of the published RRset.
+    if(rr->type != pub->qtype || !jdns_domain_cmp(rr->owner, pub->qname) || !jdns_rr_verify(rr))
+        return;
+
     r = pub->rec;
 
-    // expire existing record.  this is mostly needed for shared records
-    //   since unique records already have the cache flush bit and that
-    //   should achieve the same result.  however, since Apple expires
-    //   unique records before updates, so will we.
-    mdnsd_done(s->mdns, r);
-    if(pub->mode == JDNS_PUBLISH_UNIQUE)
-        r = mdnsd_unique(s->mdns, (char *)pub->rr->owner, pub->rr->type, rr->ttl, _multicast_pubresult, s);
-    else
+    // We still own a unique name: update it in place using cache-flush.
+    // Releasing it and probing again can mistake our looped-back goodbye
+    // (or an old cached answer from another browser) for a name conflict.
+    if(pub->mode == JDNS_PUBLISH_SHARED)
+    {
+        mdnsd_done(s->mdns, r);
         r = mdnsd_shared(s->mdns, (char *)pub->rr->owner, pub->rr->type, rr->ttl);
+    }
     pub->rec = r;
+    mdnsd_set_ttl(r, rr->ttl);
 
     if(!_publish_applyrr(s, r, rr))
     {
         _debug_line(s, "attempt to update_publish an unsupported type");
         return;
     }
+    jdns_rr_delete(pub->rr);
+    pub->rr = jdns_rr_copy(rr); // interface refreshes must retain the new value
 }
 
 void _multicast_cancel_publish(jdns_session_t *s, int id)
@@ -796,4 +814,3 @@ int jdns_step_multicast(jdns_session_t *s, int now)
         flags |= JDNS_STEP_HANDLE;
     return flags;
 }
-

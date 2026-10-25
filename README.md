@@ -156,7 +156,70 @@ Unreleased `setQueryTransport()`, `setDatagramTransport()` and `init(mode)`
 were replaced by the factories. The datagram transport is now private; public
 query transports remain available for TCP, HTTPS and external backends.
 Version 3.0 uses SOVERSION 3 and same-major CMake package compatibility.
-A separate, higher-level multicast convenience API is outside this release.
+The additive multicast convenience API below is new in 3.1.
+
+## QJDns 3.1 multicast subscriptions and publications
+
+Use `QJDnsMulticast` for an explicitly selected network link. Its factories
+return a ready session or `nullptr`; they do not silently use another interface.
+The interface factory opens IPv4/IPv6 where available. The address factory selects
+one family on the interface owning a concrete local address (IPv6 link-local
+addresses accept an interface name or index as their scope ID).
+
+```cpp
+#include <qjdnsmulticast.h>
+
+auto *mdns = QJDnsMulticast::create(QNetworkInterface::interfaceFromName("eth0"), parent);
+if (!mdns)
+    return;
+auto *browse = mdns->subscribe("_presence._tcp.local.", QJDns::Ptr);
+QObject::connect(browse, &QJDnsSharedRequest::resultsReady, parent, [browse] {
+    if (!browse->success())
+        return; // inspect browse->error() in the application
+    for (const auto &change : browse->results()) {
+        const auto user = QJDnsMulticast::instanceName(change.name, "_presence._tcp");
+        // change.ttl > 0: available; change.ttl == 0: removed.
+        // results() is a batch of changes, not a complete roster snapshot.
+    }
+});
+
+QJDns::Record host;
+host.owner = "pronto.local.";
+host.type = QJDns::A;
+host.haveKnown = true;
+host.ttl = 120;
+// Unspecified address: use this session's IPv4 source address.
+auto *publication = mdns->publish(host);
+QObject::connect(publication, &QJDnsSharedRequest::resultsReady, parent, [publication] {
+    // success(): unique record has completed probing; ErrorConflict: rename it.
+});
+// publication->publishUpdate(updatedRecord);
+// mdns->unpublish(publication);  // or publication->cancel()/delete publication
+```
+
+Every call returns a separate, caller-deletable `QJDnsSharedRequest`, owned by
+the session unless a parent is supplied. Its start, cached answers and validation
+errors are deferred until the event loop, leaving time to connect signals.
+Cancel/delete before start prevents network I/O. Multicast cancellation stays
+silent. Subscriptions and publications are long-lived; a published unique name
+can still report a later conflict. Requests with an external parent safely report
+`ErrorResolverDestroyed` if the session is destroyed.
+
+Call `shutdown()` from the application's stop handler, then wait for
+`shutdownFinished()` before deleting the session or exiting the event loop.
+This sends goodbye records. Immediate destruction does not wait for I/O.
+Recreate a session when its interface/address changes. Keep interface scope with
+discovered endpoints; `.local.` names on separate links are independent.
+Multicast uses direct local UDP, independently of the application's proxy.
+Firewalls and platform multicast permissions (including Android Wi-Fi multicast
+reception) remain the application's responsibility.
+
+`serviceName()` encodes an NFC UTF-8 DNS-SD instance as one label, escaping literal
+dots/backslashes. `instanceName()` reverses it. Neither applies IDNA to a user
+display name. Host names and service type selection remain application policy.
+The generic API does not embed XMPP presence or a second DNS-SD cache. The Iris
+`iris-linklocal` example demonstrates `_presence._tcp.local.` publication,
+on-demand resolution and XEP-0174 messaging using this API.
 
 ## Using the pure C core
 

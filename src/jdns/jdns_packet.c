@@ -139,8 +139,8 @@ static int readlabel(const unsigned char *in, int insize, const unsigned char *r
     //   dns:    [7] affinix [3] com [0] = 13 bytes
     //   string: "affinix.com."          = 12 bytes
     // only exception is '.' itself, but that won't influence the max.
-    unsigned char out[MAX_LABEL_LENGTH - 1];
-    int out_size;
+    unsigned char out[4 * MAX_LABEL_LENGTH];
+    int out_size, wire_size = 1;
     const unsigned char *label, *last;
     int hopped_yet;
     int hopsleft;
@@ -205,14 +205,33 @@ static int readlabel(const unsigned char *in, int insize, const unsigned char *r
         if(label + label_size + 1 > last)
             goto error;
 
-        // enough dest bytes? (length + dot)
-        if(out_size + label_size + 1 > MAX_LABEL_LENGTH - 1)
+        // Presentation escaping can be longer than the wire name. Keep
+        // the RFC 1035 255-octet wire limit independent of the output size.
+        wire_size += label_size + 1;
+        if(wire_size > 255)
             goto error;
-
-        memcpy(out + out_size, label + 1, label_size);
-        out_size += label_size;
-        out[out_size] = '.';
-        ++out_size;
+        {
+            int n;
+            for(n = 1; n <= label_size; ++n)
+            {
+                unsigned char c = label[n];
+                if(c == '.' || c == '\\')
+                {
+                    out[out_size++] = '\\';
+                    out[out_size++] = c;
+                }
+                else if(c < 32 || c == 127)
+                {
+                    out[out_size++] = '\\';
+                    out[out_size++] = '0' + c / 100;
+                    out[out_size++] = '0' + (c / 10) % 10;
+                    out[out_size++] = '0' + c % 10;
+                }
+                else
+                    out[out_size++] = c;
+            }
+        }
+        out[out_size++] = '.';
 
         if(!hopped_yet)
             at += label_size + 1;
@@ -222,6 +241,8 @@ static int readlabel(const unsigned char *in, int insize, const unsigned char *r
 
     *_at = at;
     *name = jdns_string_new();
+    if(out_size == 0)
+        out[out_size++] = '.'; // the root name has one presentation separator
     jdns_string_set(*name, out, out_size);
     return 1;
 
@@ -291,90 +312,74 @@ static int matchlabel(const unsigned char *a, int asize, const unsigned char *b,
     return matchlabel(a + n, asize - n, b + n, bsize - n, ref, refsize, ahopsleft, bhopsleft);
 }
 
-int jdns_packet_name_isvalid(const unsigned char *name, int size)
+// Convert an absolute DNS presentation name, including RFC 1035 escapes.
+// DNS-SD instance labels may contain literal dots and backslashes (RFC 6763).
+static int presentation_to_label(const unsigned char *name, int size, unsigned char *label)
 {
-    int n, at;
-
-    // at least one byte, no larger than MAX_LABEL_LENGTH - 1 (one byte is
-    //   gained when converting to a label)
-    if(size < 1 || size > (MAX_LABEL_LENGTH - 1))
-        return 0;
-
-    // last byte must be a dot
-    if(name[size - 1] != '.')
-        return 0;
-
-    // if name is one character (which must be a dot), return success
-    if(size == 1)
-        return 1;
-
-    // first byte can't be a dot if there are characters after
-    if(size > 1 && name[0] == '.')
-        return 0;
-
-    // each sublabel must be between 1 and MAX_SUBLABEL_LENGTH in length
-    at = 0;
-    while(1)
-    {
-        int len;
-        // search for dot or end
-        for(n = at; n < size; ++n)
-        {
-            if(name[n] == '.')
-                break;
-        }
-        // length of last one is always zero
-        if(n >= size)
-            break;
-
-        len = n - at;
-        if(len < 1 || len > MAX_SUBLABEL_LENGTH)
-            return 0;
-        at = n + 1; // skip over the dot
-    }
-
-    return 1;
-}
-
-// this function assumes label is pointing to a MAX_LABEL_LENGTH byte buffer
-static int name_to_label(const jdns_string_t *name, unsigned char *label)
-{
-    int n, i, at;
-
-    if(!jdns_packet_name_isvalid(name->data, name->size))
-        return -1;
-
-    if(name->size == 1)
+    int at = 0, out = 1, start = 0, len = 0;
+    if(size == 1 && name[0] == '.')
     {
         label[0] = 0;
         return 1;
     }
-
-    at = 0;
-    i = 0;
-    while(1)
+    if(size < 2 || size > 4 * 255 || name[size - 1] != '.')
+        return -1;
+    while(at < size)
     {
-        int len;
-        // search for dot or end
-        for(n = at; n < name->size; ++n)
+        unsigned char c = name[at++];
+        if(c == '.')
         {
-            if(name->data[n] == '.')
-                break;
+            if(len == 0)
+                return -1;
+            label[start] = (unsigned char)len;
+            if(out >= 255)
+                return -1;
+            if(at == size)
+            {
+                label[out++] = 0;
+                return out;
+            }
+            start = out++;
+            len = 0;
+            continue;
         }
-        len = n - at;
-        if(i + (len + 1) > MAX_LABEL_LENGTH) // length byte + length
-            return 0;
-
-        label[i++] = len;
-        memcpy(label + i, name->data + at, len);
-        i += len;
-
-        if(n >= name->size) // end?
-            break;
-        at = n + 1; // skip over the dot
+        if(c == '\\')
+        {
+            if(at >= size)
+                return -1;
+            c = name[at++];
+            if(c >= '0' && c <= '9')
+            {
+                int value;
+                if(at + 1 >= size || name[at] < '0' || name[at] > '9'
+                   || name[at + 1] < '0' || name[at + 1] > '9')
+                    return -1;
+                value = (c - '0') * 100 + (name[at] - '0') * 10 + name[at + 1] - '0';
+                if(value > 255)
+                    return -1;
+                c = (unsigned char)value;
+                at += 2;
+            }
+        }
+        else if(c == 0)
+            return -1;
+        if(++len > MAX_SUBLABEL_LENGTH || out >= 254)
+            return -1;
+        label[out++] = c;
     }
+    return -1; // missing the final, unescaped root separator
+}
 
-    return i;
+int jdns_packet_name_isvalid(const unsigned char *name, int size)
+{
+    unsigned char label[MAX_LABEL_LENGTH];
+    return presentation_to_label(name, size, label) > 0;
+}
+
+// label points to a MAX_LABEL_LENGTH-byte buffer.
+static int name_to_label(const jdns_string_t *name, unsigned char *label)
+{
+    return presentation_to_label(name->data, name->size, label);
 }
 
 // lookup list is made of jdns_packet_labels

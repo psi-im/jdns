@@ -28,6 +28,7 @@
 
 #include <QByteArray>
 #include <QHostAddress>
+#include <QNetworkInterface>
 #include <QObject>
 
 /**
@@ -149,6 +150,7 @@ signals:
  * @note This factory is used internally by QJDns when no custom transport
  * was injected. Applications should use QJDns::create() instead.
  */
-QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent);
+QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent,
+                                                    const QNetworkInterface &interface = QNetworkInterface());
 
 #endif

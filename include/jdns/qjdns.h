@@ -373,6 +373,7 @@ signals:
 private:
     class Private;
     friend class Private;
+    friend class QJDnsSharedPrivate;
     Private *d;
 };
 
