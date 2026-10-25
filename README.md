@@ -56,102 +56,107 @@ ctest --test-dir build --output-on-failure
 You can install the libraries and CMake package configuration with
 `cmake --install build`.
 
-## Minimal Qt example: resolve an A record via HTTPS
+## QJDns 3.0 factories and object requests
 
-This example sends a DNS request to a public RFC 8484 resolver, prints the
-returned IPv4 addresses and terminates the Qt event loop. It uses the new
-request-oriented transport API, with no fake socket handles or bind address.
+Every `create()` returns an initialized, ready-to-query resolver or `nullptr`
+on configuration/initialization failure. Network failures are asynchronous.
+All objects must be used on their Qt thread. The system factory uses the OS
+DNS configuration (UDP on desktop, the platform resolver on Android):
+
+```cpp
+QJDns *system = QJDns::create(parent);
+QJDns *https = QJDns::create(QUrl("https://cloudflare-dns.com/dns-query"), parent);
+QJDns *tcp = QJDns::create(QUrl("tcp://1.1.1.1"),
+    QNetworkProxy(QNetworkProxy::Socks5Proxy, "127.0.0.1", 9050), parent);
+QJDns *customHttp = QJDns::create(QUrl("https://example.org/dns-query"), nam, parent);
+QJDns *customBackend = QJDns::create(transport, parent);
+```
+
+URL factories follow Qt's application proxy policy by default; pass an explicit
+`QNetworkProxy` to select another policy. The HTTPS factory creates and owns its
+`QNetworkAccessManager` unless one is supplied. A supplied manager stays
+caller-owned and must outlive outstanding requests. The transport factory
+**always takes ownership**, including on failure. Its transport must be a
+fresh heap object, not shared with another resolver.
+
+Only HTTPS and TCP URLs are accepted. User information, fragments, port zero,
+and TCP paths/queries are rejected; HTTPS paths and queries are preserved.
+There is no implicit local DNS fallback after a remote failure. Qt may resolve
+the resolver endpoint's hostname locally unless its proxy handles that lookup.
+
+### Complete example: resolve an A record via HTTPS
 
 ```cpp
 // main.cpp
 #include <QCoreApplication>
 #include <QDebug>
-#include <QUrl>
-
-#include "qjdns.h"
-#include "qjdns_httptransport.h"
+#include <qjdns.h>
+#include <qjdnsshared.h>
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    QJDns dns;
-
-    auto *http = new QJDnsHttpTransport(
-        QUrl(QStringLiteral("https://dns.google/dns-query")));
-    if (!dns.setQueryTransport(http)) {
-        delete http; // Ownership transfers only on success.
+    auto *dns = QJDns::create(QUrl("https://dns.google/dns-query"), &app);
+    if (!dns)
         return 1;
-    }
-    if (!dns.init(QJDns::Unicast))
-        return 1;
-
-    QObject::connect(&dns, &QJDns::resultsReady, &app,
-                     [&app](int, const QJDns::Response &response) {
-        for (const auto &record : response.answerRecords) {
+    auto *request = dns->query("example.org.", QJDns::A, &app);
+    QObject::connect(request, &QJDnsSharedRequest::resultsReady, &app, [request, &app] {
+        if (!request->success()) {
+            qWarning() << "DNS lookup failed:" << request->error();
+            app.exit(1);
+            return;
+        }
+        for (const auto &record : request->results()) {
             if (record.type == QJDns::A)
                 qInfo().noquote() << record.address.toString();
         }
         app.quit();
     });
-    QObject::connect(&dns, &QJDns::error, &app,
-                     [&app](int, QJDns::Error error) {
-        qWarning() << "DNS lookup failed:" << error;
-        app.exit(1);
-    });
-
-    if (dns.queryStart("example.org.", QJDns::A) < 0)
-        return 1;
     return app.exec();
 }
 ```
 
-For an **installed** JDNS/QJDns package, a minimal consumer
-`CMakeLists.txt` using Qt 6 is:
+For an installed Qt 6 package:
 
 ```cmake
 cmake_minimum_required(VERSION 3.19)
 project(dns_example LANGUAGES CXX)
-
-find_package(Qt6 REQUIRED COMPONENTS Core Network)
-find_package(QJDns CONFIG REQUIRED)
-
+set(QT_DEFAULT_MAJOR_VERSION 6 CACHE STRING "Qt major version")
+find_package(Qt${QT_DEFAULT_MAJOR_VERSION} REQUIRED COMPONENTS Core Network)
+find_package(QJDns 3.0 CONFIG REQUIRED)
 add_executable(dns_example main.cpp)
 target_link_libraries(dns_example PRIVATE QJDns::QJDns)
 ```
 
-When embedding JDNS as a source subdirectory instead, use
-`add_subdirectory(path/to/jdns)` and link the same `QJDns::QJDns` target.
+Pass `-DQT_DEFAULT_MAJOR_VERSION=5` to build the example with Qt 5.
 
-The HTTPS URL above is an example **third-party DNS provider**, not a default
-server selected by JDNS. Replace it with your own endpoint as needed. Unless
-an appropriate proxy or pre-resolved endpoint is configured, Qt may resolve the
-HTTPS server's hostname through the OS resolver before opening the HTTPS
-connection. No alternate DNS transport is tried if the HTTPS request fails.
+`QJDns::query()` always returns a **pending** `QJDnsSharedRequest`: its start
+and completion happen on the event loop, including cache hits and validation
+errors. Connect immediately after the call, before processing events. Each
+call creates a separate request object; JDNS coalesces identical DNS work
+internally. Deleting one request does not cancel other consumers. Deleting or
+cancelling before start prevents network I/O. Explicit `cancel()` reports
+`ErrorCancelled` asynchronously once; deletion stays silent. Reusing a request
+with `query()` silently replaces its previous operation, including queued work.
+A completed request retains its result until deletion. The default request
+parent is its resolver; a supplied parent may outlive the resolver, in which
+case an active request reports `ErrorResolverDestroyed` asynchronously.
 
-### Other transport choices
+### Compatibility
 
-For ordinary **UDP unicast DNS**, omit `setQueryTransport()`, initialize on
-the relevant IP address family, and explicitly provide the DNS servers, for
-example:
+The released 2.0.6 constructor, `init(mode, bindAddress)`, explicit
+`setNameServers()`, ID-based `queryStart()`/`queryCancel()`, multicast API and
+`QJDnsShared`/`QJDnsSharedRequest` API remain available. Legacy
+`QJDnsSharedRequest::cancel()` keeps its silent behavior. The new single-session
+request constructor and `QJDns::query()` are for unicast queries; legacy
+multicast discovery/publication continues through `QJDnsSharedRequest` with a
+`QJDnsShared` resolver.
 
-```cpp
-QJDns dns;
-QJDns::NameServer server;
-server.address = QHostAddress(QStringLiteral("1.1.1.1"));
-server.port = 53;
-
-if (!dns.init(QJDns::Unicast, QHostAddress::AnyIPv4) ||
-    !dns.setNameServers({server}))
-    return 1;
-
-// Connect to resultsReady()/error(), then call queryStart() as above.
-```
-
-Use `QJDns::systemInfo().nameServers` to inspect the operating system's
-configured resolvers if you explicitly want that policy. For DNS over TCP,
-inject `QJDnsTcpTransport(server, port, explicitProxy)` instead; for a
-caller-managed HTTP/TLS implementation, use `QJDnsExternalTransport`.
-Multicast DNS uses `QJDns::Multicast` and the separate datagram path.
+Unreleased `setQueryTransport()`, `setDatagramTransport()` and `init(mode)`
+were replaced by the factories. The datagram transport is now private; public
+query transports remain available for TCP, HTTPS and external backends.
+Version 3.0 uses SOVERSION 3 and same-major CMake package compatibility.
+A separate, higher-level multicast convenience API is outside this release.
 
 ## Using the pure C core
 

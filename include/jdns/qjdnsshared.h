@@ -116,8 +116,9 @@ private:
 /**
  * Performs a DNS operation using QJDnsShared
  *
- * @note This class operates on a QJDnsShared instance. Applications using
- * a different resolver abstraction should use that abstraction's request API.
+ * Also returned by QJDns::query() for a single unicast session. Each request
+ * is a separate consumer and may be cancelled/deleted independently; sharing
+ * a resolver or network transaction never shares ownership of this QObject.
  *
  * QJDnsSharedRequest is used to perform DNS operations on a QJDnsShared object.  Many requests may
  * be performed simultaneously, such that a single QJDnsShared object can be "shared" across the
@@ -255,13 +256,28 @@ public:
         ErrorGeneric,   /**< Generic error during the operation.                         */
         ErrorNXDomain,  /**< The name looked up does not exist.                          */
         ErrorTimeout,   /**< The operation timed out.                                    */
-        ErrorConflict   /**< Attempt to publish an already published unique record.      */
+        ErrorConflict,  /**< Attempt to publish an already published unique record.      */
+        ErrorCancelled, /**< A QJDns::query() request was explicitly cancelled.          */
+        ErrorResolverDestroyed /**< The QJDns backing an unfinished request was destroyed. */
     };
 
     /**
      * Constructs a new object with the given @a jdnsShared and @a parent
      */
     QJDnsSharedRequest(QJDnsShared *jdnsShared, QObject *parent = 0);
+
+    /**
+     * @brief Construct a request using a single QJDns unicast resolver.
+     * @param jdns Initialized unicast resolver, on this object's thread.
+     * @param parent Optional QObject owner.
+     * @note query() starts on the event loop, including errors/cache hits.
+     * Unlike the legacy QJDnsShared constructor, explicit cancel() reports
+     * ErrorCancelled asynchronously; destruction remains silent. Destruction
+     * of the resolver reports ErrorResolverDestroyed for an active request.
+     * Resolver shutdown reports ErrorNoNet. Cancelling or reusing a request
+     * never cancels other consumers of an identical DNS query.
+     */
+    QJDnsSharedRequest(QJDns *jdns, QObject *parent = nullptr);
 
     /**
      * Destroys the object
@@ -291,7 +307,8 @@ public:
     void publishUpdate(const QJDns::Record &record);
 
     /**
-     * Cancels the current operation
+     * Cancels the current operation. The legacy QJDnsShared API stays silent.
+     * QJDns-backed requests report ErrorCancelled on the event loop once.
      */
     void cancel();
 

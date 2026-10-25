@@ -35,9 +35,9 @@ QString dataToString(const QByteArray &buf)
         if(c == '\\')
             out += "\\\\";
         else if(c >= 0x20 && c < 0x7f)
-            out += c;
+            out += QLatin1Char(char(c));
         else
-            out += QString().sprintf("\\x%02x", (unsigned int)c);
+            out += QString::asprintf("\\x%02x", (unsigned int)c);
     }
     return out;
 }
@@ -66,9 +66,9 @@ void print_record(const QJDns::Record &r)
             break;
         case QJDns::Txt:
         {
-            printf("  TXT: count=%d (ttl=%d)\n", r.texts.count(), r.ttl);
-            for(int n = 0; n < r.texts.count(); ++n)
-                printf("    len=%d [%s]\n", r.texts[n].size(), qPrintable(dataToString(r.texts[n])));
+            printf("  TXT: count=%d (ttl=%d)\n", int(r.texts.count()), r.ttl);
+            for(int n = 0; n < int(r.texts.count()); ++n)
+                printf("    len=%d [%s]\n", int(r.texts[n].size()), qPrintable(dataToString(r.texts[n])));
             break;
         }
         case QJDns::Hinfo:
@@ -78,7 +78,7 @@ void print_record(const QJDns::Record &r)
             printf("  NS: [%s] (ttl=%d)\n", r.name.data(), r.ttl);
             break;
         default:
-            printf("  (Unknown): type=%d, size=%d (ttl=%d)\n", r.type, r.rdata.size(), r.ttl);
+            printf("  (Unknown): type=%d, size=%d (ttl=%d)\n", r.type, int(r.rdata.size()), r.ttl);
             break;
     }
 }

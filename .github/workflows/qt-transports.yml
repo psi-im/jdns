@@ -35,11 +35,12 @@ jobs:
         run: cmake --build build --parallel 3
       - name: Test
         run: ctest --test-dir build --output-on-failure
-      - name: Compile README example against installed Qt 6 package
-        if: matrix.qt == 6
+      - name: Compile README example against the installed package
         run: |
           cmake --install build
           python3 tests/extract_readme_example.py readme-example
           cmake -S readme-example -B readme-example/build -G Ninja \
-            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage \
+            -DQT_DEFAULT_MAJOR_VERSION=${{ matrix.qt }}
           cmake --build readme-example/build --parallel 3
+          python3 tests/check_installed_package.py stage ${{ matrix.qt }}

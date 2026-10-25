@@ -34,12 +34,12 @@ it never allocates a fake socket or enqueues a fake datagram.
 
 ## Qt API and ownership
 
-Call QJDns::setQueryTransport() before QJDns::init(Unicast). The resolver
-owns successfully injected transports. The transport implements startRequest,
+Call QJDns::create(transport, parent). The resolver always takes ownership
+of the transport, including on initialization failure. The transport implements startRequest,
 cancelRequest, and emits responseReady or failed. Callback completion must
 never synchronously reenter the JDNS stepping loop.
 
-QJDns::setDatagramTransport() is separately available for real datagram
+QJDnsDatagramTransport is a private implementation detail for real datagram
 socket implementations. The platform's ordinary UDP/mDNS stack remains
 the default where appropriate. Android uses its network-aware system
 resolver and Private DNS through the native query interface.
@@ -78,3 +78,13 @@ Multicast-specific state and its real datagram callbacks still reside
 alongside unicast state within the C translation unit. Physically moving
 the mDNS engine into its own module remains a separate internal step.
 It must not reintroduce fake datagram semantics into query transports.
+
+## Object requests
+
+QJDns::query returns an independent QJDnsSharedRequest, reusing the released
+request class rather than introducing another subscription abstraction. A
+generation counter retires queued starts when the request is cancelled, reused
+or destroyed. A request is started only after the caller can connect signals.
+Each low-level query ID identifies one consumer; network coalescing remains
+inside JDNS. Terminal state and results are stored before completion delivery,
+so they remain readable after the resolver is gone.

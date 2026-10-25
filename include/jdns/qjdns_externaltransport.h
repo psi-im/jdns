@@ -31,8 +31,8 @@ class JDNS_EXPORT QJDnsExternalTransport : public QJDnsQueryTransport
 public:
     /**
      * @brief Construct an HTTP-, TLS-, and proxy-agnostic DNS backend adapter.
-     * @param parent Optional QObject owner, superseded by QJDns on successful
-     * QJDns::setQueryTransport().
+     * @param parent Optional QObject owner, superseded by QJDns::create(transport, parent),
+     * which always takes ownership, including on failure.
      * @note Connect queryRequested() to an application-owned asynchronous
      * backend before issuing queries. Backend network resources are not
      * created or owned by this adapter.

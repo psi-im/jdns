@@ -31,8 +31,8 @@ public:
      * @param port TCP port of the resolver (normally 53).
      * @param proxy Explicit proxy policy. Use QNetworkProxy::NoProxy for
      * a direct TCP connection or a SOCKS5 proxy for remote DNS routing.
-     * @param parent Optional QObject owner; QJDns::setQueryTransport()
-     * takes ownership if transport injection succeeds.
+     * @param parent Optional QObject owner; QJDns::create(transport, parent)
+     * always takes ownership, including on failure.
      * @note Network connections are started per request, not on
      * construction. There is no silent fallback to UDP or local DNS.
      * When the endpoint is a hostname and NoProxy is selected, Qt may

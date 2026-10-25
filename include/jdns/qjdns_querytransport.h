@@ -18,7 +18,7 @@
  * endpoint selection, retry and timeout policy. Unicast transport operations
  * never bind a listener or handle multicast.
  *
- * @note QJDns takes ownership on successful setQueryTransport() and uses this
+ * @note QJDns takes ownership on create(transport, parent) and uses this
  * interface on its QObject thread. Completion must not be emitted reentrantly
  * from startRequest(): defer even immediate errors to the event loop.
  * @warning Do not choose an implicit alternative DNS path after an error.
@@ -35,8 +35,8 @@ public:
 
     /**
      * @brief Construct an abstract asynchronous DNS query transport.
-     * @param parent Optional QObject owner; QJDns::setQueryTransport()
-     * reparents the transport if injection succeeds.
+     * @param parent Optional QObject owner; QJDns::create(transport, parent)
+     * always takes ownership, including on failure.
      */
     explicit QJDnsQueryTransport(QObject *parent = nullptr) : QObject(parent) {}
 

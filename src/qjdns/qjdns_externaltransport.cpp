@@ -85,7 +85,10 @@ void QJDnsExternalTransport::startRequest(int id, const QByteArray &dnsPacket)
         if(request)
         {
             request->dispatched = true;
-            emit queryRequested(id, request->query);
+            // A receiver may synchronously complete/cancel the request and
+            // delete its storage before later receivers inspect the packet.
+            const QByteArray packet = request->query;
+            emit queryRequested(id, packet);
         }
     });
 }

@@ -46,7 +46,7 @@ public:
      * is created and owned by this transport; when provided, ownership stays
      * with the caller, who must keep it alive during outstanding requests.
      * @param parent Optional QObject parent. QJDns assumes ownership of a
-     * successfully injected transport.
+     * transport passed to create(), including on failure.
      * @warning An internally created manager follows Qt's normal network
      * configuration; it does not automatically inherit caller-specific proxy
      * policy. Configure networkAccessManager() before querying when routing
@@ -55,7 +55,7 @@ public:
      * endpoint hostname using the system resolver during connection setup.
      * @note This transport is asynchronous and has no fallback to UDP,
      * a different HTTPS service or local DNS after an HTTPS request fails.
-     * Pass it to QJDns::setQueryTransport() before init().
+     * Pass the transport to QJDns::create(transport, parent).
      */
     QJDnsHttpTransport(const QUrl &endpoint, QNetworkAccessManager *manager = nullptr,
                       QObject *parent = nullptr);

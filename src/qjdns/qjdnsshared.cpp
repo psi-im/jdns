@@ -472,10 +472,13 @@ void QJDnsSharedPrivate::late_shutdown()
 QJDnsSharedRequestPrivate::QJDnsSharedRequestPrivate(QJDnsSharedRequest *_q) : QObject(_q)
     , q(_q)
     , jsp(NULL)
+    , type(QJDnsSharedRequest::Query)
     , qType(QJDns::A)
     , success(false)
+    , error(QJDnsSharedRequest::ErrorGeneric)
     , lateTimer(this)
 {
+    lateTimer.setSingleShot(true);
     connect(&lateTimer, SIGNAL(timeout()), SLOT(lateTimer_timeout()));
 }
 
@@ -493,6 +496,60 @@ void QJDnsSharedRequestPrivate::lateTimer_timeout()
     emit q->resultsReady();
 }
 
+void QJDnsSharedRequestPrivate::cancelDirect()
+{
+    ++generation; // retire both a deferred start and an unfinished completion
+    lateTimer.stop();
+    active = false;
+    const int id = queryId;
+    queryId = -1;
+    if(dns && id >= 0)
+        dns->queryCancel(id);
+}
+
+void QJDnsSharedRequestPrivate::finishDirect(bool ok, QJDnsSharedRequest::Error reason,
+                                            const QList<QJDns::Record> &records)
+{
+    if(!active)
+        return;
+    results = records; // copy before cancellation may remove the signalling response
+    success = ok;
+    error = reason;
+    const QPointer<QJDnsSharedRequestPrivate> guard(this);
+    const quint64 serial = generation + 1;
+    cancelDirect(); // a backend's cancellation notification may delete/reuse us
+    if(!guard || generation != serial)
+        return;
+    lateTimer.start(0);
+}
+
+void QJDnsSharedRequestPrivate::startDirect(const QByteArray &asked, int recordType)
+{
+    const QPointer<QJDnsSharedRequestPrivate> guard(this);
+    const quint64 expected = generation + 1;
+    cancelDirect();
+    if(!guard || generation != expected)
+        return;
+    type = QJDnsSharedRequest::Query;
+    success = false;
+    error = QJDnsSharedRequest::ErrorGeneric;
+    results.clear();
+    active = true;
+    const quint64 serial = generation;
+    QTimer::singleShot(0, this, [this, serial, asked, recordType]() {
+        if(!active || serial != generation)
+            return;
+        if(!dns)
+        {
+            finishDirect(false, QJDnsSharedRequest::ErrorResolverDestroyed);
+            return;
+        }
+        queryId = dns->queryStart(asked, recordType);
+        if(queryId < 0)
+            finishDirect(false, QJDnsSharedRequest::ErrorGeneric);
+    });
+}
+
 QJDnsSharedRequest::QJDnsSharedRequest(QJDnsShared *jdnsShared, QObject *parent)
 :QObject(parent)
 {
@@ -500,9 +557,39 @@ QJDnsSharedRequest::QJDnsSharedRequest(QJDnsShared *jdnsShared, QObject *parent)
     d->jsp = jdnsShared->d;
 }
 
+QJDnsSharedRequest::QJDnsSharedRequest(QJDns *jdns, QObject *parent)
+    : QObject(parent)
+{
+    d = new QJDnsSharedRequestPrivate(this);
+    d->direct = true;
+    d->dns = jdns;
+    if(!jdns)
+        return;
+    Q_ASSERT(jdns->thread() == thread());
+    connect(jdns, &QJDns::resultsReady, d, [this](int id, const QJDns::Response &response) {
+        if(d->active && d->queryId == id)
+            d->finishDirect(true, ErrorGeneric, response.answerRecords);
+    });
+    connect(jdns, &QJDns::error, d, [this](int id, QJDns::Error error) {
+        if(d->active && d->queryId == id)
+            d->finishDirect(false, error == QJDns::ErrorNXDomain ? ErrorNXDomain
+                                : error == QJDns::ErrorTimeout ? ErrorTimeout : ErrorGeneric);
+    });
+    connect(jdns, &QObject::destroyed, d, [this]() {
+        d->dns = nullptr;
+        d->finishDirect(false, ErrorResolverDestroyed);
+    });
+    connect(jdns, &QJDns::shutdownFinished, d, [this]() {
+        d->finishDirect(false, ErrorNoNet);
+    });
+}
+
 QJDnsSharedRequest::~QJDnsSharedRequest()
 {
-    cancel();
+    if(d->direct)
+        d->cancelDirect(); // destroying a consumer never emits resultsReady()
+    else
+        cancel();
     delete d;
 }
 
@@ -513,18 +600,30 @@ QJDnsSharedRequest::Type QJDnsSharedRequest::type()
 
 void QJDnsSharedRequest::query(const QByteArray &name, int type)
 {
+    if(d->direct)
+    {
+        d->startDirect(name, type);
+        return;
+    }
     cancel();
     d->jsp->queryStart(this, name, static_cast<QJDns::Type>(type));
 }
 
 void QJDnsSharedRequest::publish(QJDns::PublishMode m, const QJDns::Record &record)
 {
+    if(d->direct)
+    {
+        d->startDirect({}, 0); // single-session request API is unicast only
+        return;
+    }
     cancel();
     d->jsp->publishStart(this, m, record);
 }
 
 void QJDnsSharedRequest::publishUpdate(const QJDns::Record &record)
 {
+    if(d->direct)
+        return;
     // only allowed to update if we have an active publish
     if(!d->handles.isEmpty() && d->type == Publish)
         d->jsp->publishUpdate(this, record);
@@ -532,6 +631,12 @@ void QJDnsSharedRequest::publishUpdate(const QJDns::Record &record)
 
 void QJDnsSharedRequest::cancel()
 {
+    if(d->direct)
+    {
+        if(d->active)
+            d->finishDirect(false, ErrorCancelled);
+        return;
+    }
     d->lateTimer.stop();
     if(!d->handles.isEmpty())
     {

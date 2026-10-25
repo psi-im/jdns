@@ -36,10 +36,8 @@
  * QJDns owns the DNS protocol state machine and record parsing; this interface
  * only moves complete DNS wire packets to and from the network.
  *
- * A transport is passed to QJDns::setDatagramTransport() before QJDns::init().
- * Successful injection transfers ownership to QJDns, which also calls
- * open()/close() on transport handles. Unless injected, QJDns selects its
- * existing platform transport (normally UDP).
+ * This private interface implements the built-in UDP and mDNS backends.
+ * Applications select public query transports through QJDns::create().
  *
  * @note QJDns and its transport must be used on their QObject thread.
  * @note For asynchronous unicast DNS operations use QJDnsQueryTransport.
@@ -149,7 +147,7 @@ signals:
  * @param parent QObject owner of the created transport.
  * @return Newly allocated transport owned by @p parent.
  * @note This factory is used internally by QJDns when no custom transport
- * was injected. Most clients should use QJDns::setDatagramTransport() instead.
+ * was injected. Applications should use QJDns::create() instead.
  */
 QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent);
 

@@ -34,6 +34,7 @@
 #include <QStringList>
 #include <QSet>
 #include <QHash>
+#include <QPointer>
 
 class JDnsShutdownAgent : public QObject
 {
@@ -202,6 +203,11 @@ class QJDnsSharedRequestPrivate : public QObject
 public:
     QJDnsSharedRequest *q;
     QJDnsSharedPrivate *jsp;
+    QPointer<QJDns> dns;
+    bool direct = false;
+    bool active = false;
+    int queryId = -1;
+    quint64 generation = 0;
 
     // current action
     QJDnsSharedRequest::Type type;
@@ -226,6 +232,10 @@ public:
     SafeTimer lateTimer;
     QJDnsSharedRequestPrivate(QJDnsSharedRequest *_q);
     void resetSession();
+    void cancelDirect();
+    void finishDirect(bool ok, QJDnsSharedRequest::Error error,
+                      const QList<QJDns::Record> &records = {});
+    void startDirect(const QByteArray &name, int type);
 
 private slots:
     void lateTimer_timeout();

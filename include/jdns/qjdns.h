@@ -33,27 +33,29 @@
 #include "jdns_export.h"
 #include <QtCore>
 #include <QtNetwork>
+#include <cstddef>
 
-class QJDnsDatagramTransport;
 class QJDnsQueryTransport;
+class QJDnsSharedRequest;
 
 /**
  * @brief Low-level, asynchronous Qt wrapper around the JDNS DNS engine.
  *
- * A QJDns instance handles one unicast or multicast DNS session. To use a
- * custom TCP, DoH or external DNS resolution, call setQueryTransport()
- * before init(). For custom UDP/mDNS I/O use setDatagramTransport(). When
- * neither is selected, the platform default transport is used.
+ * Use create() for an initialized unicast resolver using system DNS,
+ * DNS-over-TCP, DNS-over-HTTPS or an application-owned network backend.
+ * The constructor and init(Mode, QHostAddress) remain available for explicit
+ * UDP configuration and multicast DNS.
  *
  * JDNS still encodes/decodes DNS messages; transport injection changes only
  * the network I/O and the semantics of DNS server selection. The caller owns
- * QJDns, while QJDns takes ownership of a successfully injected transport.
+ * QJDns, while create(transport, parent) always takes transport ownership,
+ * including on initialization failure.
  *
  * @note QJDns is QObject/event-loop based. Keep the instance and its
  * transport on the same Qt thread.
  * @warning A query transport does not automatically inherit another
  * network component's proxy configuration; configure its endpoint explicitly.
- * @see QJDnsDatagramTransport, QJDnsTcpTransport, QJDnsHttpTransport,
+ * @see QJDnsSharedRequest, QJDnsTcpTransport, QJDnsHttpTransport,
  * QJDnsExternalTransport
  */
 class JDNS_EXPORT QJDns : public QObject
@@ -170,47 +172,64 @@ public:
     ~QJDns();
 
     /**
-     * @brief Inject the sole network transport for this DNS instance.
-     * @param transport Heap-allocated QObject transport; must be non-null.
-     * @return true if accepted; false if already initialized, if a transport
-     * was already configured, or if @p transport is null.
-     * @note Ownership transfers to QJDns **only when true** is returned.
-     * If false, the caller remains responsible for the transport. On success,
-     * it is reparented to QJDns's private implementation and deleted during
-     * shutdown/cleanup; do not reuse it for another DNS instance.
-     * @warning Call before init(). This interface is only for datagram
-     * transport I/O; use setQueryTransport() for unicast TCP, DoH or external
-     * request transports. The default datagram implementation is UDP.
+     * @brief Create an initialized resolver using the system DNS configuration.
+     * @param parent Optional QObject owner.
+     * @return Ready-to-query resolver, or nullptr on initialization failure.
+     * @note Uses UDP on desktop and the platform resolver on Android.
      */
-    bool setDatagramTransport(QJDnsDatagramTransport *transport);
+    static QJDns *create(QObject *parent = nullptr);
+
+    /** @brief Disambiguate an explicit null parent from a null transport. */
+    static QJDns *create(std::nullptr_t) { return create(); }
 
     /**
-     * @brief Select an asynchronous request/response unicast DNS backend.
-     * @param transport Non-null heap-allocated query transport.
-     * @return true if accepted; false if already initialized, if any
-     * transport was previously injected, or if the pointer is null.
-     * @note Ownership transfers to QJDns only on success; otherwise the
-     * caller remains responsible for the supplied transport. On success,
-     * QJDns reparents it and deletes it during cleanup/shutdown.
-     * Native query transports do not bind sockets or require datagram
-     * source/destination addresses and handles.
-     * @warning Invoke before init(), on the same QObject thread.
-     * Query transports are supported only in QJDns::Unicast mode.
+     * @brief Create a TCP or HTTPS resolver using Qt's application proxy policy.
+     * @param server HTTPS resolver URL, or tcp://host[:port] (default port 53).
+     * @param parent Optional QObject owner.
+     * @return Initialized resolver, or nullptr for an invalid URL/init failure.
      */
-    bool setQueryTransport(QJDnsQueryTransport *transport);
+    static QJDns *create(const QUrl &server, QObject *parent = nullptr);
 
     /**
-     * @brief Initialize unicast DNS using a query transport or default UDP.
-     * @param mode Must be Unicast. Multicast needs an explicit bind address.
-     * @return true on successful initialization.
+     * @brief Disambiguate a null owner from a null HTTP manager.
+     * @param server HTTPS or TCP resolver URL.
      */
-    bool init(Mode mode);
+    static QJDns *create(const QUrl &server, std::nullptr_t)
+    { return create(server, static_cast<QObject *>(nullptr)); }
+
+    /**
+     * @brief Create a TCP or HTTPS resolver with an explicit proxy policy.
+     * @param server HTTPS or TCP resolver URL.
+     * @param proxy Qt proxy policy, including DefaultProxy or NoProxy.
+     * @param parent Optional QObject owner.
+     * @return Initialized resolver, or nullptr for an invalid URL/init failure.
+     */
+    static QJDns *create(const QUrl &server, const QNetworkProxy &proxy, QObject *parent = nullptr);
+
+    /**
+     * @brief Create an HTTPS resolver using a caller-owned HTTP manager.
+     * @param server HTTPS resolver URL.
+     * @param manager HTTP manager, or nullptr to create an internally owned one.
+     * @param parent Optional QObject owner.
+     * @return Initialized resolver, or nullptr for an invalid URL/init failure.
+     * @note A supplied manager is never deleted and must outlive DNS requests.
+     */
+    static QJDns *create(const QUrl &server, QNetworkAccessManager *manager, QObject *parent = nullptr);
+
+    /**
+     * @brief Create an initialized resolver using an asynchronous query transport.
+     * @param transport Heap-allocated transport on this thread. Ownership is
+     * always transferred, including on failure. Do not share the object.
+     * @param parent Optional QObject owner.
+     * @return Initialized resolver, or nullptr for a null transport/init failure.
+     */
+    static QJDns *create(QJDnsQueryTransport *transport, QObject *parent = nullptr);
 
     /**
      * @brief Initialize the DNS engine and chosen network transport.
      * @param mode Unicast resolution or multicast querying/publishing.
      * @param address Network interface/bind address used by UDP/mDNS. Native
-     * query transports do not bind and can use init(Unicast) instead.
+     * query transports do not bind; use create() to initialize them.
      * @return true when initialization succeeds; false otherwise.
      * @note init() may delete a configured transport if initialization fails;
      * do not retain or dereference a non-owning pointer to it afterward.
@@ -259,6 +278,20 @@ public:
      * when called before initialization.
      */
     bool setNameServers(const QList<NameServer> &list);
+
+    /**
+     * @brief Create an independently cancellable, asynchronous unicast query.
+     * @param name DNS name to query, in wire-compatible encoding.
+     * @param type DNS record type, such as QJDns::Srv.
+     * @param parent Request owner; defaults to this resolver when null.
+     * @return A pending QJDnsSharedRequest; connect to resultsReady() immediately.
+     * @note Start and completion are deferred until the event loop runs, even
+     * for cache hits and validation errors. Deletion before start prevents I/O.
+     * Results remain readable until the request is deleted. Identical queries
+     * share network work, but cancellation/deletion affects only this consumer.
+     * Use the request and resolver on the same QObject thread.
+     */
+    QJDnsSharedRequest *query(const QByteArray &name, int type, QObject *parent = nullptr);
 
     /**
      * @brief Start an asynchronous DNS resource record lookup.
