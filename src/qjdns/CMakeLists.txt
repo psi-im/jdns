@@ -69,6 +69,11 @@ target_link_libraries(qjdns
         ${QJDNS_QT_TARGETS}
 )
 
+if(WIN32)
+    # qjdns_sock.cpp calls Winsock directly; a shared jdns does not re-export it.
+    target_link_libraries(qjdns PRIVATE ws2_32)
+endif()
+
 if(ANDROID)
     target_link_libraries(qjdns PRIVATE ${CMAKE_DL_LIBS})
 endif()
