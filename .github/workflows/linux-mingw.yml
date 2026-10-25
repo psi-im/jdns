@@ -1,0 +1,97 @@
+name: Windows MinGW cross-build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-mingw-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mingw64:
+    name: MinGW64 / Qt ${{ matrix.qt }} / shared=${{ matrix.shared }}
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        qt: [5, 6]
+        shared: ["OFF", "ON"]
+        include:
+          - qt: 5
+            qt-package: mingw64-qt5-qtbase-devel
+          - qt: 6
+            qt-package: mingw64-qt6-qtbase
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Fedora ships the Windows Qt libraries and matching Linux host tools;
+      # no Qt source build, Windows runner or Wine is needed for this check.
+      - name: Install MinGW and Qt cross-compilation dependencies
+        run: >-
+          dnf install -y --disablerepo=fedora-cisco-openh264
+          --setopt=install_weak_deps=False
+          cmake ninja-build git ccache python3 file tar zstd
+          mingw64-gcc-c++ ${{ matrix.qt-package }}
+
+      - uses: actions/checkout@v4
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: mingw64-qt${{ matrix.qt }}-shared${{ matrix.shared }}
+
+      - name: Configure Windows libraries, CLI and test executables
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
+            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
+            -DBUILD_QJDNS=ON \
+            -DBUILD_JDNS_TOOL=ON \
+            -DJDNS_BUILD_TESTS=ON \
+            -DJDNS_QT_MAJOR_VERSION=${{ matrix.qt }} \
+            -DJDNS_ENABLE_INSTALL=ON
+
+      - name: Cross-compile
+        run: cmake --build build --parallel 3
+
+      # Build the tests for Windows, but do not attempt to execute PE binaries
+      # on Linux. Runtime tests remain in the native-platform workflows.
+      - name: Check Windows executable format
+        run: |
+          file build/bin/*.exe
+          x86_64-w64-mingw32-objdump -f build/bin/jdns.exe
+
+      - name: Install and compile the README against the relocated SDK
+        run: |
+          cmake --install build
+          mv stage relocated-sdk
+          test -f relocated-sdk/include/jdns/qjdnsmulticast.h
+          python3 tests/extract_readme_example.py readme-example
+          # Keep the host-side SDK outside CMake's Windows sysroot rewriting.
+          cmake -S readme-example -B readme-example/build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/relocated-sdk" \
+            -DCMAKE_STAGING_PREFIX="$PWD/relocated-sdk" \
+            -DQT_DEFAULT_MAJOR_VERSION=${{ matrix.qt }}
+          cmake --build readme-example/build --parallel 3
+          x86_64-w64-mingw32-objdump -f readme-example/build/dns_example.exe
+
+      - name: Upload Windows SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdns-mingw64-qt${{ matrix.qt }}-shared${{ matrix.shared }}
+          path: relocated-sdk/
+          if-no-files-found: error

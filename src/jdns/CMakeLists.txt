@@ -35,7 +35,8 @@ if(NOT BUILD_SHARED_LIBS)
 endif()
 
 if(WIN32)
-    target_link_libraries(jdns PRIVATE Ws2_32 Advapi32)
+    # MinGW import library names are case-sensitive on Linux cross-build hosts.
+    target_link_libraries(jdns PRIVATE ws2_32 advapi32)
 endif()
 
 if(NOT ANDROID)
