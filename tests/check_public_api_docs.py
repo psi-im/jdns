@@ -11,6 +11,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = {
+    "include/jdns/qjdnsmulticast.h": [
+        "create", "~QJDnsMulticast", "networkInterface", "addresses", "serviceName", "instanceName",
+        "subscribe", "publish", "unpublish", "shutdown", "shutdownFinished",
+    ],
     "include/jdns/jdns.h": [
         "jdns_session_new", "jdns_session_delete", "jdns_init_unicast",
         "jdns_init_multicast", "jdns_init_async_unicast",

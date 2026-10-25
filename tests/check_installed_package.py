@@ -7,6 +7,7 @@ import tempfile
 qt = int(sys.argv[2])
 prefix = pathlib.Path(sys.argv[1]).resolve()
 assert not (prefix / 'include/jdns/qjdns_datagramtransport.h').exists()
+assert (prefix / 'include/jdns/qjdnsmulticast.h').is_file()
 for version in ('2.0', '3.0', '4.0'):
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
@@ -20,10 +21,25 @@ get_target_property(actual QJDns::QJDns INTERFACE_QJDNS_QT_MAJOR_VERSION)
 if(NOT actual EQUAL {qt})
 message(FATAL_ERROR "wrong Qt")
 endif()
+add_executable(mdns_api main.cpp)
+target_link_libraries(mdns_api PRIVATE QJDns::QJDns)
+''')
+        (root / 'main.cpp').write_text('''
+#include <qjdnsmulticast.h>
+int main() {
+    const auto name = QJDnsMulticast::serviceName(QStringLiteral("test.name@host"), "_presence._tcp");
+    return QJDnsMulticast::instanceName(name, "_presence._tcp").isEmpty() ? 1 : 0;
+}
 ''')
         result = subprocess.run(['cmake', '-S', str(root), '-B', str(root / 'build'),
                                  f'-DCMAKE_PREFIX_PATH={prefix}'], capture_output=True, text=True)
         assert (result.returncode == 0) == (version == '3.0'), result.stdout + result.stderr
+        if result.returncode == 0:
+            result = subprocess.run(['cmake', '--build', str(root / 'build'), '--parallel', '2'],
+                                    capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+            result = subprocess.run([str(root / 'build/mdns_api')], capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     other = 5 if qt == 6 else 6

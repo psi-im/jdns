@@ -356,6 +356,63 @@ static void temporary_output_backpressure(void)
     jdns_rr_delete(rr);
     jdns_session_delete(s);
 }
+
+static void unique_update_ignores_old_goodbye(void)
+{
+    FakeNetwork f = {0};
+    jdns_session_t *s = new_multicast(&f);
+    jdns_rr_t *rr = new_ptr_record();
+    int id = jdns_publish(s, JDNS_PUBLISH_UNIQUE, rr);
+    jdns_event_t *event;
+    pump(s, &f, 20);
+    event = next_event(s);
+    assert(event && event->type == JDNS_EVENT_PUBLISH && event->id == id
+           && event->status == JDNS_STATUS_SUCCESS);
+    jdns_event_delete(event);
+
+    jdns_rr_set_PTR(rr, (const unsigned char *)"updated._demo._tcp.local.");
+    jdns_update_publish(s, id, rr);
+    /* An old cached goodbye is not competing ownership of the new value. */
+    f.received_length = make_ptr_response(f.received, 0);
+    jdns_set_handle_readable(s, 7);
+    pump(s, &f, 20);
+    while((event = next_event(s)) != NULL) {
+        assert(event->status == JDNS_STATUS_SUCCESS);
+        jdns_event_delete(event);
+    }
+    jdns_cancel_publish(s, id);
+    jdns_rr_delete(rr);
+    jdns_session_delete(s);
+}
+
+static void cancelling_non_head_publication_unlinks_all_queues(void)
+{
+    FakeNetwork f = {0};
+    jdns_session_t *s = new_multicast(&f);
+    jdns_rr_t *first = new_ptr_record();
+    jdns_rr_t *second = jdns_rr_copy(first);
+    jdns_event_t *event;
+    int a, b;
+    jdns_rr_set_PTR(second, (const unsigned char *)"second._demo._tcp.local.");
+    a = jdns_publish(s, JDNS_PUBLISH_SHARED, first);
+    b = jdns_publish(s, JDNS_PUBLISH_SHARED, second);
+    assert(a != b);
+    while((event = next_event(s)) != NULL) {
+        assert(event->status == JDNS_STATUS_SUCCESS);
+        jdns_event_delete(event);
+    }
+    // Both are still queued for announcements, with 'first' not at the head.
+    jdns_cancel_publish(s, a);
+    pump(s, &f, 5);
+    assert(f.sends > 0);
+    jdns_cancel_publish(s, b);
+    pump(s, &f, 5);
+    jdns_shutdown(s);
+    pump(s, &f, 5);
+    jdns_rr_delete(first);
+    jdns_rr_delete(second);
+    jdns_session_delete(s);
+}
 int main(void)
 {
     reject_wrong_lifecycle();
@@ -364,6 +421,8 @@ int main(void)
     query_reuse_cancel_and_probe();
     malformed_multicast_and_shutdown();
     temporary_output_backpressure();
+    unique_update_ignores_old_goodbye();
+    cancelling_non_head_publication_unlinks_all_queues();
     puts("mDNS isolation regression tests passed");
     return 0;
 }

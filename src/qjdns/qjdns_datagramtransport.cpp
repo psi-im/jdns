@@ -26,16 +26,22 @@
 #include "qjdns_sock.h"
 
 #include <QHash>
+#include <QNetworkDatagram>
+#include <QNetworkProxy>
 #include <QUdpSocket>
+#include <QVariant>
 
 class QJDnsUdpTransport : public QJDnsDatagramTransport
 {
 public:
-    explicit QJDnsUdpTransport(QObject *parent) : QJDnsDatagramTransport(parent) {}
+    explicit QJDnsUdpTransport(QObject *parent, const QNetworkInterface &interface)
+        : QJDnsDatagramTransport(parent), interface_(interface) {}
 
     int open(const QHostAddress &address, quint16 port, const QHostAddress &multicastAddress) override
     {
         auto *socket = new QUdpSocket(this);
+        if(!multicastAddress.isNull())
+            socket->setProxy(QNetworkProxy::NoProxy); // link-local traffic stays on its selected link
 
         QUdpSocket::BindMode bindMode;
         bindMode |= QUdpSocket::ShareAddress;
@@ -48,28 +54,43 @@ public:
 
         if(!multicastAddress.isNull())
         {
-            const int sd = socket->socketDescriptor();
-            bool ok;
-            int errorCode;
-            if(multicastAddress.protocol() == QAbstractSocket::IPv6Protocol)
-                ok = qjdns_sock_setMulticast6(sd, multicastAddress.toIPv6Address().c, &errorCode);
-            else
-                ok = qjdns_sock_setMulticast4(sd, multicastAddress.toIPv4Address(), &errorCode);
-
-            if(!ok)
+            if(interface_.isValid())
             {
-                emit debugLine(QString("failed to setup multicast on the socket (errorCode=%1)").arg(errorCode));
-                delete socket;
-                return 0;
-            }
-
-            if(multicastAddress.protocol() == QAbstractSocket::IPv6Protocol)
-            {
-                qjdns_sock_setTTL6(sd, 255);
-                qjdns_sock_setIPv6Only(sd);
+                socket->setMulticastInterface(interface_);
+                socket->setSocketOption(QAbstractSocket::MulticastTtlOption, 255);
+                socket->setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
+                if(!socket->joinMulticastGroup(multicastAddress, interface_))
+                {
+                    emit debugLine(socket->errorString());
+                    delete socket;
+                    return 0;
+                }
             }
             else
-                qjdns_sock_setTTL4(sd, 255);
+            {
+                const int sd = socket->socketDescriptor();
+                bool ok;
+                int errorCode;
+                if(multicastAddress.protocol() == QAbstractSocket::IPv6Protocol)
+                    ok = qjdns_sock_setMulticast6(sd, multicastAddress.toIPv6Address().c, &errorCode);
+                else
+                    ok = qjdns_sock_setMulticast4(sd, multicastAddress.toIPv4Address(), &errorCode);
+
+                if(!ok)
+                {
+                    emit debugLine(QString("failed to setup multicast on the socket (errorCode=%1)").arg(errorCode));
+                    delete socket;
+                    return 0;
+                }
+
+                if(multicastAddress.protocol() == QAbstractSocket::IPv6Protocol)
+                {
+                    qjdns_sock_setTTL6(sd, 255);
+                    qjdns_sock_setIPv6Only(sd);
+                }
+                else
+                    qjdns_sock_setTTL4(sd, 255);
+            }
         }
 
         const int handle = nextHandle_++;
@@ -92,7 +113,10 @@ public:
         if(!socket)
             return RetryLater;
 
-        if(socket->writeDatagram(packet, destination, port) == -1)
+        QNetworkDatagram datagram(packet, destination, port);
+        if(interface_.isValid())
+            datagram.setInterfaceIndex(uint(interface_.index()));
+        if(socket->writeDatagram(datagram) == -1)
         {
             // Preserve the historical QJDns behaviour: a datagram that cannot
             // be written is treated as dropped rather than retried forever.
@@ -107,31 +131,31 @@ public:
         if(!socket || !socket->hasPendingDatagrams())
             return false;
 
-        const qint64 pendingSize = socket->pendingDatagramSize();
-        if(pendingSize < 0)
-            return false;
-
-        QByteArray data;
-        data.resize(static_cast<int>(pendingSize));
-        QHostAddress sourceAddress;
-        quint16 sourcePort = 0;
-        const qint64 size = socket->readDatagram(data.data(), data.size(), &sourceAddress, &sourcePort);
-        if(size < 0)
-            return false;
-
-        data.resize(static_cast<int>(size));
-        packet->sourceAddress = sourceAddress;
-        packet->sourcePort = sourcePort;
-        packet->data = data;
-        return true;
+        while(socket->hasPendingDatagrams())
+        {
+            const QNetworkDatagram datagram = socket->receiveDatagram();
+            if(!datagram.isValid())
+                continue;
+            // A wildcard-bound socket can see packets received on another
+            // interface when other processes join the same multicast group.
+            if(interface_.isValid() && datagram.interfaceIndex() != 0
+               && datagram.interfaceIndex() != uint(interface_.index()))
+                continue;
+            packet->sourceAddress = datagram.senderAddress();
+            packet->sourcePort = datagram.senderPort();
+            packet->data = datagram.data();
+            return true;
+        }
+        return false;
     }
 
 private:
     int nextHandle_ = 1;
     QHash<int, QUdpSocket *> sockets_;
+    QNetworkInterface interface_;
 };
 
-QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent)
+QJDnsDatagramTransport *qjdns_create_datagram_transport(QObject *parent, const QNetworkInterface &interface)
 {
-    return new QJDnsUdpTransport(parent);
+    return new QJDnsUdpTransport(parent, interface);
 }

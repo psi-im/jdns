@@ -1084,6 +1084,8 @@ void QJDns::queryCancel(int id)
 
 int QJDns::publishStart(PublishMode m, const Record &record)
 {
+    if(!d->sess || d->mode != Multicast || d->shutting_down || record.ttl <= 0 || !record.verify())
+        return -1;
     jdns_rr_t *rr = export_record(record);
 
     int pubmode;
@@ -1100,6 +1102,8 @@ int QJDns::publishStart(PublishMode m, const Record &record)
 
 void QJDns::publishUpdate(int id, const Record &record)
 {
+    if(!d->sess || d->mode != Multicast || d->shutting_down || id < 0 || record.ttl <= 0 || !record.verify())
+        return;
     jdns_rr_t *rr = export_record(record);
 
     jdns_update_publish(d->sess, id, rr);
@@ -1109,6 +1113,8 @@ void QJDns::publishUpdate(int id, const Record &record)
 
 void QJDns::publishCancel(int id)
 {
+    if(!d->sess || id < 0)
+        return;
     jdns_cancel_publish(d->sess, id);
     d->removeCancelled(id);
     d->process();
