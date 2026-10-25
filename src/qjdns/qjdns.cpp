@@ -25,8 +25,12 @@
 
 #include <time.h>
 #include "qjdns_sock.h"
-#include "qjdns_datagramtransport.h"
+#include "qjdns_datagramtransport_p.h"
 #include "qjdns_querytransport.h"
+#include "qjdns_httptransport.h"
+#include "qjdns_tcptransport.h"
+#include "qjdnsshared.h"
+#include <memory>
 
 #ifdef Q_OS_ANDROID
 QJDnsQueryTransport *qjdns_create_android_query_transport(QObject *parent);
@@ -848,29 +852,64 @@ QJDns::~QJDns()
     delete d;
 }
 
-bool QJDns::setDatagramTransport(QJDnsDatagramTransport *transport)
+QJDns *QJDns::create(QObject *parent)
 {
-    if(d->sess || d->transport || d->queryTransport || !transport)
-        return false;
-    transport->setParent(d);
-    d->transport = transport;
-    return true;
+    std::unique_ptr<QJDns> dns(new QJDns(parent));
+    if(!dns->init(Unicast, QHostAddress::AnyIPv4))
+        return nullptr;
+    if(!dns->d->queryTransport && !dns->setNameServers(systemInfo().nameServers))
+        return nullptr;
+    return dns.release();
 }
 
-bool QJDns::setQueryTransport(QJDnsQueryTransport *transport)
+namespace {
+bool validResolverUrl(const QUrl &url)
 {
-    if(d->sess || d->transport || d->queryTransport || !transport)
+    if(!url.isValid() || url.host().isEmpty() || !url.userInfo().isEmpty()
+       || url.hasFragment() || url.port(53) <= 0 || url.port(53) > 65535)
         return false;
-    transport->setParent(d);
-    d->queryTransport = transport;
-    return true;
+    if(url.scheme() == QLatin1String("https"))
+        return true;
+    return url.scheme() == QLatin1String("tcp") && url.path().isEmpty() && !url.hasQuery();
+}
 }
 
-bool QJDns::init(Mode mode)
+QJDns *QJDns::create(const QUrl &server, QObject *parent)
 {
-    if(mode != Unicast)
-        return false;
-    return d->init(mode, QHostAddress::AnyIPv4);
+    return create(server, QNetworkProxy(QNetworkProxy::DefaultProxy), parent);
+}
+
+QJDns *QJDns::create(const QUrl &server, const QNetworkProxy &proxy, QObject *parent)
+{
+    if(!validResolverUrl(server))
+        return nullptr;
+    if(server.scheme() == QLatin1String("https"))
+    {
+        auto *transport = new QJDnsHttpTransport(server);
+        transport->networkAccessManager()->setProxy(proxy);
+        return create(transport, parent);
+    }
+    return create(new QJDnsTcpTransport(server.host(QUrl::FullyEncoded), quint16(server.port(53)), proxy), parent);
+}
+
+QJDns *QJDns::create(const QUrl &server, QNetworkAccessManager *manager, QObject *parent)
+{
+    if(!validResolverUrl(server) || server.scheme() != QLatin1String("https"))
+        return nullptr;
+    return create(new QJDnsHttpTransport(server, manager), parent);
+}
+
+QJDns *QJDns::create(QJDnsQueryTransport *transport, QObject *parent)
+{
+    if(!transport)
+        return nullptr;
+    Q_ASSERT(transport->thread() == QThread::currentThread());
+    std::unique_ptr<QJDns> dns(new QJDns(parent));
+    transport->setParent(dns->d);
+    dns->d->queryTransport = transport;
+    if(!dns->init(Unicast, QHostAddress::AnyIPv4))
+        return nullptr;
+    return dns.release();
 }
 
 bool QJDns::init(Mode mode, const QHostAddress &address)
@@ -1018,8 +1057,17 @@ bool QJDns::setNameServers(const QList<NameServer> &list)
     return d->setNameServers(list);
 }
 
+QJDnsSharedRequest *QJDns::query(const QByteArray &name, int type, QObject *parent)
+{
+    auto *request = new QJDnsSharedRequest(this, parent ? parent : this);
+    request->query(name, d->sess && d->mode == Unicast ? type : 0);
+    return request;
+}
+
 int QJDns::queryStart(const QByteArray &name, int type)
 {
+    if(!d->sess || d->shutting_down || name.isEmpty() || name.contains('\0') || type < 1 || type > 65535)
+        return -1;
     int id = jdns_query(d->sess, (const unsigned char *)name.data(), type);
     d->process();
     return id;
@@ -1027,6 +1075,8 @@ int QJDns::queryStart(const QByteArray &name, int type)
 
 void QJDns::queryCancel(int id)
 {
+    if(!d->sess || id < 0)
+        return;
     jdns_cancel_query(d->sess, id);
     d->removeCancelled(id);
     d->process();

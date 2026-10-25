@@ -19,4 +19,5 @@ target_link_libraries(qjdns-transport-test PRIVATE
     Qt${JDNS_QT_MAJOR_VERSION}::Network
 )
 add_test(NAME qjdns-transports COMMAND qjdns-transport-test)
+set_tests_properties(qjdns-transports PROPERTIES TIMEOUT 30)
 endif()

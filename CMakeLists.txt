@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 project(jdns
-    VERSION 2.0.6
+    VERSION 3.0.0
     LANGUAGES C CXX
 )
 
@@ -163,7 +163,7 @@ if(JDNS_ENABLE_INSTALL)
     write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfigVersion.cmake"
         VERSION "${JDNS_LIB_VERSION_STRING}"
-        COMPATIBILITY AnyNewerVersion
+        COMPATIBILITY SameMajorVersion
     )
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/JDnsConfig.cmake"
@@ -189,7 +189,7 @@ if(JDNS_ENABLE_INSTALL)
         write_basic_package_version_file(
             "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}ConfigVersion.cmake"
             VERSION "${JDNS_LIB_VERSION_STRING}"
-            COMPATIBILITY AnyNewerVersion
+            COMPATIBILITY SameMajorVersion
         )
         install(FILES
             "${CMAKE_CURRENT_BINARY_DIR}/QJDns${QT_MAJ}Config.cmake"
@@ -202,7 +202,7 @@ if(JDNS_ENABLE_INSTALL)
             write_basic_config_version_file(
                 "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfigVersion.cmake"
                 VERSION "${JDNS_LIB_VERSION_STRING}"
-                COMPATIBILITY AnyNewerVersion
+                COMPATIBILITY SameMajorVersion
             )
             install(FILES
                 "${CMAKE_CURRENT_BINARY_DIR}/QJDnsConfig.cmake"

@@ -17,13 +17,9 @@ PUBLIC = {
         "jdns_async_complete", "jdns_async_fail", "jdns_set_nameservers",
     ],
     "include/jdns/qjdns.h": [
-        "setDatagramTransport", "setQueryTransport", "setNameServers",
+        "create", "query", "setNameServers",
         "queryStart", "queryCancel", "publishStart", "publishUpdate",
         "publishCancel", "shutdown",
-    ],
-    "include/jdns/qjdns_datagramtransport.h": [
-        "open", "close", "submit", "takeResponse", "readyRead",
-        "packetWritten", "debugLine", "qjdns_create_datagram_transport",
     ],
     "include/jdns/qjdns_querytransport.h": [
         "startRequest", "cancelRequest", "responseReady", "failed", "debugLine",

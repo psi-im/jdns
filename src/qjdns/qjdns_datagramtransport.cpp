@@ -21,7 +21,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qjdns_datagramtransport.h"
+#include "qjdns_datagramtransport_p.h"
 
 #include "qjdns_sock.h"
 

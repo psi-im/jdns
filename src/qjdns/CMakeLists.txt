@@ -3,10 +3,10 @@ cmake_minimum_required(VERSION 3.19)
 set(qjdns_MOC_HDRS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
-    "${JDNS_INCLUDEDIR}/qjdns_datagramtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_querytransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_externaltransport.h"
     qjdns_p.h
+    qjdns_datagramtransport_p.h
     qjdnsshared_p.h
 )
 
@@ -27,7 +27,6 @@ endif()
 set(qjdns_PUBLIC_HEADERS
     "${JDNS_INCLUDEDIR}/qjdns.h"
     "${JDNS_INCLUDEDIR}/qjdnsshared.h"
-    "${JDNS_INCLUDEDIR}/qjdns_datagramtransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_querytransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_tcptransport.h"
     "${JDNS_INCLUDEDIR}/qjdns_httptransport.h"
@@ -48,6 +47,8 @@ add_library(qjdns
 add_library(QJDns::QJDns ALIAS qjdns)
 
 set_target_properties(qjdns PROPERTIES AUTOMOC ON)
+set_property(TARGET qjdns PROPERTY INTERFACE_QJDNS_QT_MAJOR_VERSION "${JDNS_QT_MAJOR_VERSION}")
+set_property(TARGET qjdns APPEND PROPERTY COMPATIBLE_INTERFACE_STRING QJDNS_QT_MAJOR_VERSION)
 
 if(QT_MAJ)
     set_target_properties(qjdns PROPERTIES OUTPUT_NAME "qjdns${QT_MAJ}")
