@@ -554,7 +554,14 @@ static jdns_dnsparams_t *dnsparams_get_winsys()
         return 0;
 
     params = 0;
-    myGetNetworkParams = (GetNetworkParamsFunc)GetProcAddress(lib, "GetNetworkParams");
+    // GetProcAddress returns FARPROC (an untyped function pointer). A direct
+    // cast between incompatible function-pointer types triggers warnings on
+    // MinGW; copy the pointer representation instead, as required by Win32.
+    {
+        FARPROC symbol = GetProcAddress(lib, "GetNetworkParams");
+        myGetNetworkParams = 0;
+        memcpy(&myGetNetworkParams, &symbol, sizeof(myGetNetworkParams));
+    }
     if(myGetNetworkParams)
     {
         ULONG bufsize = 0;
