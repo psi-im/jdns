@@ -52,8 +52,6 @@
 //   but he wouldn't succeed in running our program out of memory.
 #define MAX_CACHE 16384
 
-#define bzero(p, size) memset(p, 0, size)
-
 /* messy, but it's the best/simplest balance I can find at the moment
 Some internal data types, and a few hashes: querys, answers, cached, and records (published, unique and shared)
 Each type has different semantics for processing, both for timeouts, incoming, and outgoing I/O
@@ -341,7 +339,7 @@ void _u_push(mdnsd d, mdnsdr r, int id, const jdns_address_t *addr, unsigned sho
 {
     struct unicast *u;
     u = (struct unicast *)jdns_alloc(sizeof(struct unicast));
-    bzero(u,sizeof(struct unicast));
+    memset(u, 0, sizeof(struct unicast));
     u->r = r;
     u->id = id;
     if(addr->isIpv6)
@@ -529,7 +527,7 @@ void _cache(mdnsd d, const jdns_rr_t *r)
         return;
 
     c = (struct cached *)jdns_alloc(sizeof(struct cached));
-    bzero(c,sizeof(struct cached));
+    memset(c, 0, sizeof(struct cached));
     c->rr.name = (unsigned char *)jdns_strdup((char *)r->owner);
     c->rr.type = r->type;
     c->rr.ttl = d->now.tv_sec + (r->ttl / 2) + 8; // XXX hack for now, BAD SPEC, start retrying just after half-waypoint, then expire
@@ -673,7 +671,7 @@ mdnsd mdnsd_new(int qclass, int frame, int port, int (*time_now)(mdnsd d, void *
     //int i;
     mdnsd d;
     d = (mdnsd)jdns_alloc(sizeof(struct mdnsd_struct));
-    bzero(d,sizeof(struct mdnsd_struct));
+    memset(d, 0, sizeof(struct mdnsd_struct));
     d->cb_time_now = time_now;
     d->cb_rand_int = rand_int;
     d->cb_arg = arg;
@@ -837,7 +835,7 @@ int mdnsd_out(mdnsd d, jdns_packet_t **_m, jdns_address_t **addr, unsigned short
     jdns_packet_t *m;
 
     mygettimeofday(d, &d->now);
-    //bzero(m,sizeof(struct message));
+    //memset(m, 0, sizeof(struct message));
     m = jdns_packet_new();
 
     // defaults, multicast
@@ -1050,7 +1048,7 @@ void mdnsd_query(mdnsd d, char *host, int type, int (*answer)(mdnsda a, void *ar
         struct cached *cur = 0;
         if(!answer) return;
         q = (struct query *)jdns_alloc(sizeof(struct query));
-        bzero(q,sizeof(struct query));
+        memset(q, 0, sizeof(struct query));
         q->name = jdns_strdup(host);
         q->type = type;
         q->next = d->queries[i];
@@ -1086,7 +1084,7 @@ mdnsdr mdnsd_shared(mdnsd d, char *host, int type, long int ttl)
     int i = _namehash_nocase(host) % SPRIME;
     mdnsdr r;
     r = (mdnsdr)jdns_alloc(sizeof(struct mdnsdr_struct));
-    bzero(r,sizeof(struct mdnsdr_struct));
+    memset(r, 0, sizeof(struct mdnsdr_struct));
     r->rr.name = (unsigned char *)jdns_strdup(host);
     r->rr.type = type;
     r->rr.ttl = ttl;
