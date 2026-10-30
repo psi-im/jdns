@@ -323,7 +323,10 @@ public:
     Error error() const;
 
     /**
-     * Returns the results of the operation
+     * Returns the results of the operation.
+     *
+     * For multicast subscriptions, duplicate refreshes neither emit resultsReady()
+     * nor replace the last reported batch.
      */
     QList<QJDns::Record> results() const;
 

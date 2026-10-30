@@ -62,9 +62,6 @@ jobs:
           - qt: '6.4.3'
             major: 6
             arch: win64_msvc2019_64
-          - qt: '6.11.2'
-            major: 6
-            arch: win64_msvc2022_64
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1

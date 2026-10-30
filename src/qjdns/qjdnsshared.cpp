@@ -1234,11 +1234,11 @@ void QJDnsSharedPrivate::jdns_resultsReady(int id, const QJDns::Response &result
     if(!obj)
         return;
 
-    obj->d->success = true;
-    obj->d->results = results.answerRecords;
+    QList<QJDns::Record> reported;
 
     if(mode == QJDnsShared::UnicastInternet || mode == QJDnsShared::UnicastLocal)
     {
+        reported = results.answerRecords;
         // only one response, so "cancel" it
         for(int n = 0; n < obj->d->handles.count(); ++n)
         {
@@ -1264,11 +1264,10 @@ void QJDnsSharedPrivate::jdns_resultsReady(int id, const QJDns::Response &result
     }
     else // Multicast
     {
-        // check our cache to see how we should report these results
-        for(int n = 0; n < obj->d->results.count(); ++n)
+        // Check our cache without replacing the last reported batch on a silent refresh.
+        reported.reserve(results.answerRecords.size());
+        for(const QJDns::Record &r : results.answerRecords)
         {
-            QJDns::Record &r = obj->d->results[n];
-
             // do we have this answer already in our cache?
             QJDnsSharedRequestPrivate::CachedAnswer *c = 0;
             int c_at = -1;
@@ -1304,19 +1303,16 @@ void QJDnsSharedPrivate::jdns_resultsReady(int id, const QJDns::Response &result
             }
             // Keep a record observed on both IP families until both engines
             // withdraw it. Duplicate refreshes remain silent.
-            if(!report)
-            {
-                obj->d->results.removeAt(n);
-                --n; // adjust position
-                continue;
-            }
-
+            if(report)
+                reported.append(r);
         }
 
-        if(obj->d->results.isEmpty())
+        if(reported.isEmpty())
             return;
     }
 
+    obj->d->success = true;
+    obj->d->results.swap(reported);
     emit obj->resultsReady();
 }
 
