@@ -44,3 +44,51 @@ jobs:
             -DQT_DEFAULT_MAJOR_VERSION=${{ matrix.qt }}
           cmake --build readme-example/build --parallel 3
           python3 tests/check_installed_package.py stage ${{ matrix.qt }}
+
+  windows:
+    name: Windows / Qt ${{ matrix.qt }}
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      JDNS_TEST_DEBUG: '1'
+      QT_FORCE_STDERR_LOGGING: '1'
+      QT_LOGGING_TO_CONSOLE: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: '5.15.2'
+            major: 5
+            arch: win64_msvc2019_64
+          - qt: '6.4.3'
+            major: 6
+            arch: win64_msvc2019_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          arch: ${{ matrix.arch }}
+          cache: true
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -D BUILD_QJDNS=ON
+          -D JDNS_BUILD_TESTS=ON
+          -D BUILD_JDNS_TOOL=OFF
+          -D JDNS_QT_MAJOR_VERSION=${{ matrix.major }}
+          -D JDNS_ENABLE_INSTALL=OFF
+          -D CMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 90
+      - name: Upload failed test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-qt${{ matrix.qt }}-test-logs
+          path: build/Testing/Temporary/*.log

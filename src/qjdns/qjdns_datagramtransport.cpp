@@ -57,6 +57,12 @@ public:
             if(interface_.isValid())
             {
                 socket->setMulticastInterface(interface_);
+                if(socket->multicastInterface().index() != interface_.index())
+                {
+                    emit debugLine(QStringLiteral("Cannot select the requested multicast interface"));
+                    delete socket;
+                    return 0;
+                }
                 socket->setSocketOption(QAbstractSocket::MulticastTtlOption, 255);
                 socket->setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
                 if(!socket->joinMulticastGroup(multicastAddress, interface_))
@@ -94,27 +100,41 @@ public:
         }
 
         const int handle = nextHandle_++;
-        sockets_.insert(handle, socket);
+        sockets_.insert(handle, SocketState(socket));
 
-        connect(socket, &QUdpSocket::readyRead, this, [this, handle]() { emit readyRead(handle); });
+        connect(socket, &QUdpSocket::readyRead, this, [this, handle]() {
+            auto state = sockets_.find(handle);
+            if(state == sockets_.end())
+                return;
+            state->readNotified = true;
+            emit readyRead(handle);
+        });
         connect(socket, &QUdpSocket::bytesWritten, this, [this](qint64) { emit packetWritten(); }, Qt::QueuedConnection);
         return handle;
     }
 
     void close(int handle) override
     {
-        auto *socket = sockets_.take(handle);
+        auto *socket = sockets_.take(handle).socket;
         delete socket;
     }
 
     SubmitResult submit(int handle, const QHostAddress &destination, quint16 port, const QByteArray &packet) override
     {
-        auto *socket = sockets_.value(handle);
+        auto *socket = sockets_.value(handle).socket;
         if(!socket)
             return RetryLater;
 
         QNetworkDatagram datagram(packet, destination, port);
-        if(interface_.isValid())
+        bool perPacketInterface = interface_.isValid();
+#ifdef Q_OS_WIN
+        // The socket's multicast interface already pins these packets to the selected link.
+        // Adding per-packet IP_PKTINFO can silently drop IPv4 multicast on Windows.
+        // Retain per-packet selection for unicast replies.
+        if(destination.protocol() == QAbstractSocket::IPv4Protocol && destination.isMulticast())
+            perPacketInterface = false;
+#endif
+        if(perPacketInterface)
             datagram.setInterfaceIndex(uint(interface_.index()));
         if(socket->writeDatagram(datagram) == -1)
         {
@@ -127,13 +147,23 @@ public:
 
     bool takeResponse(int handle, Packet *packet) override
     {
-        auto *socket = sockets_.value(handle);
-        if(!socket || !socket->hasPendingDatagrams())
+        auto state = sockets_.find(handle);
+        if(state == sockets_.end())
+            return false;
+        auto *socket = state->socket;
+        const bool notified = state->readNotified;
+        state->readNotified = false;
+        if(!notified && !socket->hasPendingDatagrams())
             return false;
 
-        while(socket->hasPendingDatagrams())
+        do
         {
-            const QNetworkDatagram datagram = socket->receiveDatagram();
+            // A stale readyRead notification still needs a read to rearm Qt's UDP notifier.
+            // An explicit bound also avoids receiveDatagram() returning before that read when empty.
+            constexpr qint64 MaxDatagramSize = 65535;
+            const qint64 pendingSize = socket->pendingDatagramSize();
+            const qint64 receiveSize = pendingSize < 0 ? MaxDatagramSize : qMin(pendingSize, MaxDatagramSize);
+            const QNetworkDatagram datagram = socket->receiveDatagram(receiveSize);
             if(!datagram.isValid())
                 continue;
             // A wildcard-bound socket can see packets received on another
@@ -145,13 +175,20 @@ public:
             packet->sourcePort = datagram.senderPort();
             packet->data = datagram.data();
             return true;
-        }
+        } while(socket->hasPendingDatagrams());
         return false;
     }
 
 private:
+    struct SocketState
+    {
+        explicit SocketState(QUdpSocket *s = nullptr) : socket(s), readNotified(false) {}
+        QUdpSocket *socket;
+        bool readNotified;
+    };
+
     int nextHandle_ = 1;
-    QHash<int, QUdpSocket *> sockets_;
+    QHash<int, SocketState> sockets_;
     QNetworkInterface interface_;
 };
 
