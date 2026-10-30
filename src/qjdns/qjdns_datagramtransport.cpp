@@ -57,6 +57,12 @@ public:
             if(interface_.isValid())
             {
                 socket->setMulticastInterface(interface_);
+                if(socket->multicastInterface().index() != interface_.index())
+                {
+                    emit debugLine(QStringLiteral("Cannot select the requested multicast interface"));
+                    delete socket;
+                    return 0;
+                }
                 socket->setSocketOption(QAbstractSocket::MulticastTtlOption, 255);
                 socket->setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
                 if(!socket->joinMulticastGroup(multicastAddress, interface_))
@@ -114,7 +120,15 @@ public:
             return RetryLater;
 
         QNetworkDatagram datagram(packet, destination, port);
-        if(interface_.isValid())
+        bool perPacketInterface = interface_.isValid();
+#ifdef Q_OS_WIN
+        // The socket's multicast interface already pins these packets to the selected link.
+        // Adding per-packet IP_PKTINFO can silently drop IPv4 multicast on Windows.
+        // Retain per-packet selection for unicast replies.
+        if(destination.protocol() == QAbstractSocket::IPv4Protocol && destination.isMulticast())
+            perPacketInterface = false;
+#endif
+        if(perPacketInterface)
             datagram.setInterfaceIndex(uint(interface_.index()));
         if(socket->writeDatagram(datagram) == -1)
         {
