@@ -50,6 +50,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     env:
+      JDNS_TEST_DEBUG: '1'
       QT_FORCE_STDERR_LOGGING: '1'
       QT_LOGGING_TO_CONSOLE: '1'
     strategy:

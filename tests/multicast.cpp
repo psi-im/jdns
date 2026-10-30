@@ -34,7 +34,18 @@ bool has(const QJDnsSharedRequest *request, const QByteArray &name, bool removed
 std::unique_ptr<QJDnsMulticast> session()
 {
     // No public DNS service, physical LAN, or default route is involved.
-    return std::unique_ptr<QJDnsMulticast>(QJDnsMulticast::create(QHostAddress::LocalHost));
+    auto dns = std::unique_ptr<QJDnsMulticast>(QJDnsMulticast::create(QHostAddress::LocalHost));
+    if(dns && qEnvironmentVariableIsSet("JDNS_TEST_DEBUG"))
+    {
+        static int nextId = 0;
+        auto *debug = new QJDnsSharedDebug(dns.get());
+        dns->findChild<QJDnsShared *>()->setDebug(debug, QString::number(nextId++));
+        QObject::connect(debug, &QJDnsSharedDebug::readyRead, debug, [debug] {
+            for(const auto &line : debug->readDebugLines())
+                qInfo().noquote() << line;
+        });
+    }
+    return dns;
 }
 void finish(QJDnsMulticast *dns)
 {
