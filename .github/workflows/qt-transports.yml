@@ -49,6 +49,9 @@ jobs:
     name: Windows / Qt ${{ matrix.qt }}
     runs-on: windows-2022
     timeout-minutes: 20
+    env:
+      QT_FORCE_STDERR_LOGGING: '1'
+      QT_LOGGING_TO_CONSOLE: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +62,7 @@ jobs:
           - qt: '6.4.3'
             major: 6
             arch: win64_msvc2019_64
-          - qt: '6.12.0'
+          - qt: '6.11.2'
             major: 6
             arch: win64_msvc2022_64
     steps:
@@ -84,4 +87,10 @@ jobs:
       - name: Build
         run: cmake --build build --parallel 3
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 90
+      - name: Upload failed test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-qt${{ matrix.qt }}-test-logs
+          path: build/Testing/Temporary/*.log
