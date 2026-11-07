@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 project(jdns
-    VERSION 3.1.1
+    VERSION 3.1.2
     LANGUAGES C CXX
 )
 
