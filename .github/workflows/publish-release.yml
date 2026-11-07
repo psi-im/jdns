@@ -1,0 +1,56 @@
+name: Publish JDNS release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - CMakeLists.txt
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'psi-im/jdns' && startsWith(github.event.head_commit.message, 'Release JDNS ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          version=$(python3 - <<'PY'
+          import pathlib
+          import re
+          cmake = pathlib.Path("CMakeLists.txt").read_text()
+          match = re.search(r"project\(\s*jdns\s+VERSION\s+(\d+\.\d+\.\d+)", cmake)
+          if not match:
+              raise SystemExit("Could not find JDNS project version")
+          print(match.group(1))
+          PY
+          )
+          subject=$(git log -1 --format=%s)
+          if [[ "$subject" != "Release JDNS $version" ]]; then
+            echo "::error::Release commit title must match CMake project version: Release JDNS $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create version tag and GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists"
+            exit 0
+          fi
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "JDNS $VERSION" \
+            --generate-notes
