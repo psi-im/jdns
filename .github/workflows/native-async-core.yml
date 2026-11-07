@@ -34,6 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate public DNS API Doxygen
         run: python3 tests/check_public_api_docs.py
+      - name: Verify GNUInstallDirs and legacy lib suffix compatibility
+        run: python3 tests/check_libdir.py
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
       - name: Configure C-only core with ASan and UBSan
