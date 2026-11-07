@@ -5,6 +5,12 @@ project(jdns
     LANGUAGES C CXX
 )
 
+# Respect the install directory selected by GNUInstallDirs or the packager.
+# LIB_SUFFIX is a legacy fallback, never an addition to an explicit libdir.
+set(LIB_SUFFIX "" CACHE STRING "Legacy library directory suffix (used only without CMAKE_INSTALL_LIBDIR)")
+if(NOT DEFINED CMAKE_INSTALL_LIBDIR AND LIB_SUFFIX)
+    set(CMAKE_INSTALL_LIBDIR "lib${LIB_SUFFIX}" CACHE PATH "Library installation directory")
+endif()
 include(GNUInstallDirs)
 
 # On Windows debug libraries use the conventional 'd' postfix. Keep the
@@ -67,22 +73,8 @@ endif()
 set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
 set(JDNS_INCLUDEDIR "${CMAKE_CURRENT_SOURCE_DIR}/include/jdns")
 
-set(LIB_SUFFIX "" CACHE STRING "Legacy suffix for installations using a plain lib directory")
 set(BIN_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}" CACHE PATH "Binary install directory")
-# GNUInstallDirs already selects lib64 or a multiarch directory where needed.
-# Older packagers may also pass LIB_SUFFIX=64: never append it twice.
-set(_jdns_libdir "${CMAKE_INSTALL_LIBDIR}")
-if(LIB_SUFFIX AND CMAKE_INSTALL_LIBDIR STREQUAL "lib")
-    set(_jdns_libdir "lib${LIB_SUFFIX}")
-endif()
-if(IS_ABSOLUTE "${_jdns_libdir}")
-    set(_jdns_library_install_path "${_jdns_libdir}")
-else()
-    set(_jdns_library_install_path "${CMAKE_INSTALL_PREFIX}/${_jdns_libdir}")
-endif()
-set(LIB_INSTALL_DIR "${_jdns_library_install_path}" CACHE PATH "Library install directory")
-unset(_jdns_libdir)
-unset(_jdns_library_install_path)
+set(LIB_INSTALL_DIR "${CMAKE_INSTALL_FULL_LIBDIR}" CACHE PATH "Library install directory")
 set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}" CACHE PATH "Header install directory")
 set(DOC_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATAROOTDIR}/doc/jdns" CACHE PATH "Documentation install directory")
 
