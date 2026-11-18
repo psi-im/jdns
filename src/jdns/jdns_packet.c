@@ -373,8 +373,9 @@ static int presentation_to_label(const unsigned char *name, int size, unsigned c
 int jdns_packet_name_isvalid(const unsigned char *name, size_t size)
 {
     unsigned char label[MAX_LABEL_LENGTH];
-    // Escaped presentation names can be up to four times their wire length.
-    if(size > 4 * MAX_LABEL_LENGTH)
+    // Only protect the size_t-to-int conversion here. The parser below
+    // already enforces DNS presentation and wire-format length limits.
+    if(size > INT_MAX)
         return 0;
     return presentation_to_label(name, (int)size, label) > 0;
 }
