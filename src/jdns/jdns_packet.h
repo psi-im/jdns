@@ -25,6 +25,7 @@
 #ifndef JDNS_PACKET_H
 #define JDNS_PACKET_H
 
+#include <stddef.h>
 #include "jdns.h"
 
 // -- howto --
