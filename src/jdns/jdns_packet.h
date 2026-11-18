@@ -42,7 +42,7 @@
 //
 // IMPORTANT: all names must be valid. that is, ending in a dot character
 
-int jdns_packet_name_isvalid(const unsigned char *name, int size); // 0 if not valid
+int jdns_packet_name_isvalid(const unsigned char *name, size_t size); // 0 if not valid
 
 typedef struct jdns_packet_question
 {
