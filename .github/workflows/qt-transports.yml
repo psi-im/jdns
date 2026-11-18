@@ -14,13 +14,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        qt: [5, 6]
+        include:
+          - qt: 5
+            qt_package: qtbase5-dev
+          - qt: 6
+            qt_package: qt6-base-dev
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build qtbase5-dev qt6-base-dev
+          sudo apt-get install -y --no-install-recommends cmake ninja-build ${{ matrix.qt_package }}
       - name: Configure
         run: >
           cmake -S . -B build -G Ninja
