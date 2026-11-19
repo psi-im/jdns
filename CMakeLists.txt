@@ -5,6 +5,8 @@ project(jdns
     LANGUAGES C CXX
 )
 
+# Release SDK publication requires the exact release commit subject.
+
 # Respect the install directory selected by GNUInstallDirs or the packager.
 # LIB_SUFFIX is a legacy fallback, never an addition to an explicit libdir.
 set(LIB_SUFFIX "" CACHE STRING "Legacy library directory suffix (used only without CMAKE_INSTALL_LIBDIR)")
