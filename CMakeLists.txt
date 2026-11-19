@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 
 project(jdns
     VERSION 3.1.3
+# Release SDK publication is triggered by the exact release commit subject.
     LANGUAGES C CXX
 )
 
