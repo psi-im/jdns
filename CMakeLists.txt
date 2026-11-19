@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.19)
 
 project(jdns
     VERSION 3.1.3
-# Release SDK publication is triggered by the exact release commit subject.
     LANGUAGES C CXX
 )
+
+# Release SDK publication requires the exact release commit subject.
 
 # Respect the install directory selected by GNUInstallDirs or the packager.
 # LIB_SUFFIX is a legacy fallback, never an addition to an explicit libdir.
