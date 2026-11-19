@@ -10,9 +10,11 @@ permissions:
   contents: write
 
 jobs:
-  publish:
+  validate:
     if: github.repository == 'psi-im/jdns' && startsWith(github.event.head_commit.message, 'Release JDNS ')
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,18 +41,215 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Create version tag and GitHub release
+
+  linux-sdk:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: 5
+            package: qtbase5-dev
+          - qt: 6
+            package: qt6-base-dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build ${{ matrix.package }}
+      - name: Build, test and install SDK
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
+            -DBUILD_QJDNS=ON -DJDNS_BUILD_TESTS=ON \
+            -DBUILD_JDNS_TOOL=OFF -DJDNS_QT_MAJOR_VERSION=${{ matrix.qt }}
+          cmake --build build --parallel 3
+          ctest --test-dir build --output-on-failure
+          cmake --install build
+          tar -C stage -czf "jdns-${{ needs.validate.outputs.version }}-linux-x64-qt${{ matrix.qt }}.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-linux-qt${{ matrix.qt }}
+          path: jdns-*.tar.gz
+          if-no-files-found: error
+
+  windows-sdk:
+    needs: validate
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: 5.15.2
+            major: 5
+            arch: win64_msvc2019_64
+          - qt: 6.4.3
+            major: 6
+            arch: win64_msvc2019_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          arch: ${{ matrix.arch }}
+          cache: true
+      - name: Build, test and install SDK
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/stage" -DBUILD_QJDNS=ON -DJDNS_BUILD_TESTS=ON -DBUILD_JDNS_TOOL=OFF -DJDNS_QT_MAJOR_VERSION=${{ matrix.major }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build --parallel 3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build --output-on-failure --timeout 90
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path stage/* -DestinationPath "jdns-${{ needs.validate.outputs.version }}-windows-msvc-x64-qt${{ matrix.major }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-windows-qt${{ matrix.major }}
+          path: jdns-*.zip
+          if-no-files-found: error
+
+  android-sdk:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            qt_arch: android_arm64_v8a
+          - abi: x86_64
+            qt_arch: android_x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.2
+          target: android
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+      - name: Build and install Android SDK
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
         run: |
+          set -euo pipefail
+          qt_cmake=$(find "$QT_ROOT_DIR" -type f -name qt-cmake -print -quit)
+          test -n "$qt_cmake"
+          chmod +x "$qt_cmake"
+          "$qt_cmake" -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DANDROID_PLATFORM=android-28 \
+            -DBUILD_QJDNS=ON -DBUILD_JDNS_TOOL=OFF -DJDNS_QT_MAJOR_VERSION=6 -DMULTI_QT=OFF
+          cmake --build build --parallel 3
+          cmake --install build
+          tar -C stage -czf "jdns-${{ needs.validate.outputs.version }}-android-${{ matrix.abi }}-qt6.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-android-${{ matrix.abi }}
+          path: jdns-*.tar.gz
+          if-no-files-found: error
+
+  mingw-sdk:
+    needs: validate
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: 5
+            package: mingw64-qt5-qtbase-devel
+          - qt: 6
+            package: mingw64-qt6-qtbase
+    steps:
+      - name: Install cross-build tools
+        run: >-
+          dnf install -y --disablerepo=fedora-cisco-openh264
+          --setopt=install_weak_deps=False
+          cmake ninja-build git python3 tar gzip mingw64-gcc-c++ ${{ matrix.package }}
+      - uses: actions/checkout@v4
+      - name: Cross-build and install SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/stage" \
+            -DBUILD_QJDNS=ON -DBUILD_JDNS_TOOL=OFF \
+            -DJDNS_QT_MAJOR_VERSION=${{ matrix.qt }}
+          cmake --build build --parallel 3
+          cmake --install build
+          tar -C stage -czf "jdns-${{ needs.validate.outputs.version }}-windows-mingw-x64-qt${{ matrix.qt }}.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-mingw-qt${{ matrix.qt }}
+          path: jdns-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [validate, linux-sdk, windows-sdk, android-sdk, mingw-sdk]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sdk-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify SDK matrix and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
           tag="v$VERSION"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists"
-            exit 0
+          for asset in \
+            "jdns-$VERSION-linux-x64-qt5.tar.gz" \
+            "jdns-$VERSION-linux-x64-qt6.tar.gz" \
+            "jdns-$VERSION-windows-msvc-x64-qt5.zip" \
+            "jdns-$VERSION-windows-msvc-x64-qt6.zip" \
+            "jdns-$VERSION-android-arm64-v8a-qt6.tar.gz" \
+            "jdns-$VERSION-android-x86_64-qt6.tar.gz" \
+            "jdns-$VERSION-windows-mingw-x64-qt5.tar.gz" \
+            "jdns-$VERSION-windows-mingw-x64-qt6.tar.gz"; do
+            test -s "release-assets/$asset"
+          done
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" \
+              --title "JDNS $VERSION" --generate-notes
           fi
-          gh release create "$tag" \
-            --target "$GITHUB_SHA" \
-            --title "JDNS $VERSION" \
-            --generate-notes
+          gh release upload "$tag" release-assets/* --clobber
+          python3 - <<'PY'
+          import json, os, subprocess
+          version = os.environ["VERSION"]
+          release = json.loads(subprocess.check_output(
+              ["gh", "api", f"repos/psi-im/jdns/releases/tags/v{version}"], text=True))
+          expected = {os.path.basename(p) for p in __import__("glob").glob("release-assets/*")}
+          assets = {a["name"]: a for a in release["assets"]}
+          missing = expected - assets.keys()
+          if missing or any(assets[name]["size"] == 0 for name in expected - missing):
+              raise SystemExit(f"Missing or empty release assets: {sorted(missing)}")
+          print(f"Verified {len(expected)} published SDK assets for v{version}")
+          PY
+          mkdir -p verified-downloads
+          for asset in release-assets/*; do
+            name=$(basename "$asset")
+            gh release download "$tag" --pattern "$name" --dir verified-downloads
+            cmp "$asset" "verified-downloads/$name"
+          done
+          echo "All published SDK archives downloaded and matched the uploaded bytes."
