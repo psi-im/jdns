@@ -246,3 +246,10 @@ jobs:
               raise SystemExit(f"Missing or empty release assets: {sorted(missing)}")
           print(f"Verified {len(expected)} published SDK assets for v{version}")
           PY
+          mkdir -p verified-downloads
+          for asset in release-assets/*; do
+            name=$(basename "$asset")
+            gh release download "$tag" --pattern "$name" --dir verified-downloads
+            cmp "$asset" "verified-downloads/$name"
+          done
+          echo "All published SDK archives downloaded and matched the uploaded bytes."
